@@ -408,6 +408,15 @@ class MatplotlibCanvas:
                 ax.plot(truth_data['lon'], truth_data['lat'], 
                        'r--', alpha=0.6, linewidth=2, label='Truth Trajectory' if truth_id == truth_df['id'].iloc[0] else "")
         
+        # Apply coordinate ranges if provided
+        if 'lat_range' in data and data['lat_range'] is not None:
+            lat_min, lat_max = data['lat_range']
+            ax.set_ylim(lat_min, lat_max)
+        
+        if 'lon_range' in data and data['lon_range'] is not None:
+            lon_min, lon_max = data['lon_range']
+            ax.set_xlim(lon_min, lon_max)
+        
         # Styling
         ax.set_title('Trajectory Animation (Static View)', fontsize=14, fontweight='bold')
         ax.set_xlabel('Longitude', fontsize=12)
@@ -415,6 +424,31 @@ class MatplotlibCanvas:
         ax.grid(True, alpha=0.3)
         ax.legend()
         ax.set_aspect('equal', adjustable='box')
+        
+        # Fix axis formatting for geographic coordinates (same as geospatial plot)
+        # Disable scientific notation and offset formatting
+        ax.ticklabel_format(style='plain', useOffset=False)
+    
+        # For very small coordinate ranges, use fixed decimal places
+        from matplotlib.ticker import FixedFormatter, FixedLocator
+        import numpy as np
+        
+        # Get current axis limits
+        xlim = ax.get_xlim()
+        ylim = ax.get_ylim()
+        
+        # If the range is small (typical for local geographic data), format nicely
+        if abs(xlim[1] - xlim[0]) < 1.0:  # Less than 1 degree
+            # Create custom tick formatters for longitude
+            x_ticks = np.linspace(xlim[0], xlim[1], 6)
+            ax.set_xticks(x_ticks)
+            ax.set_xticklabels([f'{tick:.4f}' for tick in x_ticks])
+        
+        if abs(ylim[1] - ylim[0]) < 1.0:  # Less than 1 degree
+            # Create custom tick formatters for latitude
+            y_ticks = np.linspace(ylim[0], ylim[1], 6)
+            ax.set_yticks(y_ticks)
+            ax.set_yticklabels([f'{tick:.4f}' for tick in y_ticks])
     
     def export_plot(self):
         """Export the current plot to a file."""
