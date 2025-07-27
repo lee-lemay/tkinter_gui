@@ -214,6 +214,31 @@ class MatplotlibCanvas:
         ax.set_ylabel('Latitude', fontsize=12)
         ax.grid(True, alpha=0.3)
         ax.legend()
+    
+        # Fix axis formatting for geographic coordinates
+        # Disable scientific notation and offset formatting
+        ax.ticklabel_format(style='plain', useOffset=False)
+    
+        # For very small coordinate ranges, use fixed decimal places
+        from matplotlib.ticker import FixedFormatter, FixedLocator
+        import numpy as np
+        
+        # Get current axis limits
+        xlim = ax.get_xlim()
+        ylim = ax.get_ylim()
+        
+        # If the range is small (typical for local geographic data), format nicely
+        if abs(xlim[1] - xlim[0]) < 1.0:  # Less than 1 degree
+            # Create custom tick formatters for longitude
+            x_ticks = np.linspace(xlim[0], xlim[1], 6)
+            ax.set_xticks(x_ticks)
+            ax.set_xticklabels([f'{tick:.4f}' for tick in x_ticks])
+        
+        if abs(ylim[1] - ylim[0]) < 1.0:  # Less than 1 degree
+            # Create custom tick formatters for latitude
+            y_ticks = np.linspace(ylim[0], ylim[1], 6)
+            ax.set_yticks(y_ticks)
+            ax.set_yticklabels([f'{tick:.4f}' for tick in y_ticks])
         
         # Equal aspect ratio for geographic data
         ax.set_aspect('equal', adjustable='box')

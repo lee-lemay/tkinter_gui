@@ -68,6 +68,10 @@ class MainWindow:
         """
         self.controller = controller
         
+        # Register this view as an observer of the model to receive state change notifications
+        if hasattr(controller, 'model'):
+            controller.model.add_observer(self)
+        
         # Pass controller to child components
         if self.menu_bar:
             self.menu_bar.set_controller(controller)

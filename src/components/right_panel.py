@@ -126,9 +126,6 @@ class RightPanel:
         self.canvas_widgets['overview'] = MatplotlibCanvas(canvas_frame)
         self.canvas_widgets['overview'].frame.pack(fill="both", expand=True)
         
-        # Create demo plot
-        self._create_demo_plot()
-        
         # Instructions frame
         instructions_frame = ttk.Frame(overview_frame)
         instructions_frame.pack(fill="x", padx=10, pady=(0, 10))
@@ -332,11 +329,11 @@ class RightPanel:
             canvas = self.canvas_widgets['visualization']
             
             if plot_id == 'track_counts':
-                canvas.create_simple_plot({'plot_type': 'track_counts', 'data': plot_data['track_counts']})
+                canvas.create_simple_plot({'track_counts': plot_data['track_counts']})
             elif plot_id == 'lat_lon_scatter':
-                canvas.create_simple_plot({'plot_type': 'lat_lon', 'data': plot_data['lat_lon_data']})
+                canvas.create_simple_plot({'lat_lon_data': plot_data['lat_lon_data']})
             elif plot_id == 'demo_plot':
-                canvas.create_simple_plot({'plot_type': 'demo'})
+                canvas.create_simple_plot({})
             
             self.logger.info(f"Created plot: {plot_id}")
         
@@ -354,7 +351,7 @@ class RightPanel:
             
             if 'error' not in plot_data:
                 canvas = self.canvas_widgets['statistics']
-                canvas.create_simple_plot({'plot_type': 'track_counts', 'data': plot_data['track_counts']})
+                canvas.create_simple_plot({'track_counts': plot_data['track_counts']})
             
         except Exception as e:
             self.logger.error(f"Error showing track counts: {e}")
@@ -377,10 +374,41 @@ class RightPanel:
             
             if 'error' not in plot_data:
                 canvas = self.canvas_widgets['geospatial']
-                canvas.create_simple_plot({'plot_type': 'lat_lon', 'data': plot_data['lat_lon_data']})
+                canvas.create_simple_plot({'lat_lon_data': plot_data['lat_lon_data']})
             
         except Exception as e:
             self.logger.error(f"Error showing lat/lon plot: {e}")
+    
+    def _auto_update_geospatial_plot(self):
+        """Automatically update the geospatial plot when focus dataset changes."""
+        try:
+            if not self.plot_manager or not self.controller:
+                return
+            
+            app_state = self.controller.get_state()
+            focus_info = app_state.get_focus_dataset_info()
+            
+            # Only auto-update if we have a loaded focus dataset with data
+            if (focus_info and 
+                focus_info.status.value == "loaded" and 
+                ((focus_info.tracks_df is not None and not focus_info.tracks_df.empty) or
+                 (focus_info.truth_df is not None and not focus_info.truth_df.empty))):
+                
+                # Get plot configuration from UI (use defaults if UI controls not available)
+                config = {
+                    'include_tracks': getattr(self, 'include_tracks_var', tk.BooleanVar(value=True)).get(),
+                    'include_truth': getattr(self, 'include_truth_var', tk.BooleanVar(value=True)).get()
+                }
+                
+                plot_data = self.plot_manager.prepare_plot_data('lat_lon_scatter', app_state, config)
+                
+                if 'error' not in plot_data and 'geospatial' in self.canvas_widgets:
+                    canvas = self.canvas_widgets['geospatial']
+                    canvas.create_simple_plot({'lat_lon_data': plot_data['lat_lon_data']})
+                    self.logger.debug(f"Auto-updated geospatial plot for dataset: {focus_info.name}")
+            
+        except Exception as e:
+            self.logger.error(f"Error auto-updating geospatial plot: {e}")
     
     def _on_tab_changed(self, event):
         """Handle tab change events."""
@@ -416,11 +444,21 @@ class RightPanel:
                 # Update track counts display
                 self._show_track_counts()
                 
+                # Check if focus dataset is loaded and auto-update geospatial plot
+                focus_info = state.get_focus_dataset_info()
+                if focus_info and focus_info.status.value == "loaded":
+                    self._auto_update_geospatial_plot()
+                
                 self.logger.debug(f"Datasets changed, plots refreshed")
             
             elif event == "focus_changed":
                 # Refresh plots when focus dataset changes
                 self._refresh_available_plots()
+                
+                # Auto-update geospatial plot if focus dataset is loaded
+                focus_info = state.get_focus_dataset_info()
+                if focus_info and focus_info.status.value == "loaded":
+                    self._auto_update_geospatial_plot()
                 
                 self.logger.debug(f"Focus changed, plots refreshed")
             
