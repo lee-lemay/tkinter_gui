@@ -22,7 +22,7 @@ def main():
     """Main entry point for the application."""
     try:
         # Setup logging
-        setup_logger()
+        setup_logger(log_to_file=False)
         logger = logging.getLogger(__name__)
         logger.info("Starting Data Analysis Application")
         

@@ -120,6 +120,62 @@ class DataInterface(ABC):
             ErrorMetrics object with computed error statistics
         """
         pass
+    
+    @abstractmethod
+    def get_focus_summary(self, dataset_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get summary statistics for the focus dataset.
+        
+        Args:
+            dataset_name: Name of the dataset
+            
+        Returns:
+            Dictionary containing summary statistics, or None if error
+        """
+        pass
+    
+    @abstractmethod
+    def get_plot_data(self, dataset_name: str, plot_type: str, 
+                      config: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+        """
+        Get data for creating specific plot types.
+        
+        Args:
+            dataset_name: Name of the dataset
+            plot_type: Type of plot (e.g., 'track_counts', 'lat_lon_scatter')
+            config: Optional configuration parameters for the plot
+            
+        Returns:
+            Dictionary containing plot data, or None if error
+        """
+        pass
+    
+    @abstractmethod
+    def get_track_counts(self) -> Dict[str, int]:
+        """
+        Get track counts for all loaded datasets.
+        
+        Returns:
+            Dictionary mapping dataset names to track counts
+        """
+        pass
+    
+    @abstractmethod
+    def get_lat_lon_data(self, dataset_name: str, 
+                        include_tracks: bool = True, 
+                        include_truth: bool = True) -> Optional[Dict[str, Any]]:
+        """
+        Get latitude/longitude data for a specific dataset.
+        
+        Args:
+            dataset_name: Name of the dataset
+            include_tracks: Whether to include track positions
+            include_truth: Whether to include truth positions
+            
+        Returns:
+            Dictionary containing lat/lon data, or None if error
+        """
+        pass
 
 
 class MockDataInterface(DataInterface):
@@ -292,3 +348,125 @@ class MockDataInterface(DataInterface):
             metrics.max_position_error = 45.2   # meters
         
         return metrics
+    
+    def get_focus_summary(self, dataset_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get summary statistics for the focus dataset.
+        
+        This mock implementation returns placeholder summary data.
+        """
+        self.logger.debug(f"Getting focus summary for dataset: {dataset_name}")
+        
+        # Return mock summary data
+        return {
+            'dataset_name': dataset_name,
+            'num_tracks': 25,
+            'num_detections': 1250,
+            'num_truth_measurements': 300,
+            'duration_seconds': 600.0,
+            'date_range': '2024-01-01 10:00 to 2024-01-01 10:10',
+            'last_updated': datetime.now().isoformat()
+        }
+    
+    def get_plot_data(self, dataset_name: str, plot_type: str, 
+                      config: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+        """
+        Get data for creating specific plot types.
+        
+        This mock implementation returns placeholder data for different plot types.
+        """
+        if config is None:
+            config = {}
+        
+        self.logger.debug(f"Getting plot data for {plot_type} from dataset: {dataset_name}")
+        
+        if plot_type == 'track_counts':
+            return {
+                'datasets': ['Dataset_A', 'Dataset_B', 'Dataset_C'],
+                'counts': [25, 18, 32]
+            }
+        elif plot_type == 'lat_lon_scatter':
+            import numpy as np
+            # Generate mock lat/lon data
+            n_points = 50
+            base_lat, base_lon = 40.7128, -74.0060  # NYC coordinates
+            
+            tracks_lat = base_lat + np.random.normal(0, 0.01, n_points)
+            tracks_lon = base_lon + np.random.normal(0, 0.01, n_points)
+            
+            truth_lat = base_lat + np.random.normal(0, 0.005, n_points//2)
+            truth_lon = base_lon + np.random.normal(0, 0.005, n_points//2)
+            
+            return {
+                'tracks': {
+                    'lat': tracks_lat.tolist(),
+                    'lon': tracks_lon.tolist()
+                },
+                'truth': {
+                    'lat': truth_lat.tolist(),
+                    'lon': truth_lon.tolist()
+                }
+            }
+        elif plot_type == 'demo_plot':
+            import numpy as np
+            x = np.linspace(0, 10, 100)
+            return {
+                'x': x.tolist(),
+                'y1': np.sin(x).tolist(),
+                'y2': np.cos(x).tolist()
+            }
+        else:
+            return None
+    
+    def get_track_counts(self) -> Dict[str, int]:
+        """
+        Get track counts for all loaded datasets.
+        
+        This mock implementation returns placeholder counts.
+        """
+        self.logger.debug("Getting track counts for all datasets")
+        
+        return {
+            'Dataset_A': 25,
+            'Dataset_B': 18,
+            'Dataset_C': 32
+        }
+    
+    def get_lat_lon_data(self, dataset_name: str, 
+                        include_tracks: bool = True, 
+                        include_truth: bool = True) -> Optional[Dict[str, Any]]:
+        """
+        Get latitude/longitude data for a specific dataset.
+        
+        This mock implementation returns placeholder coordinate data.
+        """
+        self.logger.debug(f"Getting lat/lon data for dataset: {dataset_name}")
+        
+        import numpy as np
+        
+        result = {}
+        base_lat, base_lon = 40.7128, -74.0060  # NYC coordinates
+        
+        if include_tracks:
+            n_tracks = 50
+            tracks_lat = base_lat + np.random.normal(0, 0.01, n_tracks)
+            tracks_lon = base_lon + np.random.normal(0, 0.01, n_tracks)
+            
+            result['tracks'] = pd.DataFrame({
+                'lat': tracks_lat,
+                'lon': tracks_lon,
+                'track_id': range(n_tracks)
+            })
+        
+        if include_truth:
+            n_truth = 25
+            truth_lat = base_lat + np.random.normal(0, 0.005, n_truth)
+            truth_lon = base_lon + np.random.normal(0, 0.005, n_truth)
+            
+            result['truth'] = pd.DataFrame({
+                'lat': truth_lat,
+                'lon': truth_lon,
+                'id': range(n_truth)
+            })
+        
+        return result
