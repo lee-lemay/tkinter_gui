@@ -52,6 +52,24 @@ class MatplotlibCanvas:
         self.toolbar = NavigationToolbar2Tk(self.canvas, self.toolbar_frame)
         self.toolbar.update()
         
+        # Hook into navigation toolbar methods to ensure we catch all navigation events
+        self._setup_toolbar_hooks()
+        
+        # Zoom/pan event callback
+        self.zoom_callback = None
+        
+        # Connect to multiple matplotlib events for comprehensive navigation detection
+        self.canvas.mpl_connect('button_release_event', self._on_navigation_event)
+        self.canvas.mpl_connect('key_release_event', self._on_navigation_event)
+        self.canvas.mpl_connect('scroll_event', self._on_navigation_event)
+        
+        # Note: xlim_changed and ylim_changed are not valid mpl events
+        # We rely on toolbar hooks and user interaction events instead
+        
+        # Track last known limits to prevent duplicate updates
+        self.last_xlim = None
+        self.last_ylim = None
+        
         # Create custom toolbar with export button
         self._create_custom_toolbar()
         
@@ -80,6 +98,41 @@ class MatplotlibCanvas:
         separator = ttk.Separator(self.toolbar_frame, orient='vertical')
         separator.pack(side=tk.LEFT, padx=5, fill=tk.Y)
     
+    def _setup_toolbar_hooks(self):
+        """Setup hooks into navigation toolbar methods to catch all navigation."""
+        if not hasattr(self, 'toolbar') or not self.toolbar:
+            return
+            
+        # Store original toolbar methods
+        self._original_home = getattr(self.toolbar, 'home', None)
+        self._original_back = getattr(self.toolbar, 'back', None)
+        self._original_forward = getattr(self.toolbar, 'forward', None)
+        self._original_zoom = getattr(self.toolbar, 'zoom', None)
+        self._original_pan = getattr(self.toolbar, 'pan', None)
+        
+        # Replace with wrapped versions
+        if self._original_home:
+            self.toolbar.home = self._wrap_toolbar_method(self._original_home)
+        if self._original_back:
+            self.toolbar.back = self._wrap_toolbar_method(self._original_back)
+        if self._original_forward:
+            self.toolbar.forward = self._wrap_toolbar_method(self._original_forward)
+        if self._original_zoom:
+            self.toolbar.zoom = self._wrap_toolbar_method(self._original_zoom)
+        if self._original_pan:
+            self.toolbar.pan = self._wrap_toolbar_method(self._original_pan)
+    
+    def _wrap_toolbar_method(self, original_method):
+        """Wrap a toolbar method to trigger limit checking."""
+        def wrapped_method(*args, **kwargs):
+            # Call original method
+            result = original_method(*args, **kwargs)
+            # Schedule limit check
+            if hasattr(self, 'canvas_widget') and self.canvas_widget:
+                self.canvas_widget.after_idle(self._check_axes_limits)
+            return result
+        return wrapped_method
+    
     def get_frame(self) -> ttk.Frame:
         """Get the main frame containing the canvas."""
         return self.frame
@@ -87,6 +140,60 @@ class MatplotlibCanvas:
     def get_figure(self) -> Figure:
         """Get the matplotlib figure object."""
         return self.figure
+    
+    def set_zoom_callback(self, callback):
+        """Set callback function to be called when zoom/pan events occur."""
+        self.zoom_callback = callback
+    
+    def _on_navigation_event(self, event):
+        """Handle general navigation events (button, key, scroll)."""
+        # Use a small delay to ensure axes have been updated
+        if hasattr(self, 'canvas_widget') and self.canvas_widget:
+            self.canvas_widget.after_idle(self._check_axes_limits)
+    
+    def _check_axes_limits(self):
+        """Check if axes limits have changed and notify callback."""
+        if not self.zoom_callback:
+            return
+            
+        try:
+            # Get the current axes (assumes single subplot)
+            axes = self.figure.get_axes()
+            if not axes:
+                return
+                
+            ax = axes[0]  # Get first (and typically only) axes
+            
+            # Get current limits
+            xlim = ax.get_xlim()
+            ylim = ax.get_ylim()
+            
+            # Check if limits have actually changed
+            if (xlim != self.last_xlim or ylim != self.last_ylim):
+                self.last_xlim = xlim
+                self.last_ylim = ylim
+                
+                # Notify callback with new ranges
+                self.zoom_callback(xlim, ylim)
+                
+        except Exception as e:
+            self.logger.debug(f"Error checking axes limits: {e}")
+    
+    def _initialize_limit_tracking(self):
+        """Initialize limit tracking for a new plot."""
+        try:
+            axes = self.figure.get_axes()
+            if axes:
+                ax = axes[0]
+                self.last_xlim = ax.get_xlim()
+                self.last_ylim = ax.get_ylim()
+                self.logger.debug(f"Initialized limit tracking: xlim={self.last_xlim}, ylim={self.last_ylim}")
+        except Exception as e:
+            self.logger.debug(f"Error initializing limit tracking: {e}")
+    
+    def _on_zoom_pan(self, event):
+        """Legacy method - redirect to new handler."""
+        self._on_navigation_event(event)
     
     def clear_plot(self):
         """Clear the current plot and show empty axes."""
@@ -138,6 +245,9 @@ class MatplotlibCanvas:
             # Apply common styling
             self.figure.tight_layout()
             self.canvas.draw()
+            
+            # Initialize limit tracking for new plot
+            self._initialize_limit_tracking()
             
             self.logger.debug("Plot created successfully")
             
@@ -449,6 +559,98 @@ class MatplotlibCanvas:
             y_ticks = np.linspace(ylim[0], ylim[1], 6)
             ax.set_yticks(y_ticks)
             ax.set_yticklabels([f'{tick:.4f}' for tick in y_ticks])
+    
+    def create_animation_frame(self, filtered_data: Dict[str, Any], current_frame: int, max_frames: int):
+        """Create an animation frame showing data up to current timestamp."""
+        try:
+            # Clear the current plot and create new axes
+            self.figure.clear()
+            ax = self.figure.add_subplot(111)
+            
+            # Get coordinate ranges
+            lat_range = filtered_data.get('lat_range')
+            lon_range = filtered_data.get('lon_range')
+            current_time = filtered_data.get('current_time')
+            
+            # Plot tracks data up to current time
+            if filtered_data.get('tracks') is not None and len(filtered_data['tracks']) > 0:
+                tracks_df = filtered_data['tracks']
+                for track_id in tracks_df['track_id'].unique():
+                    track_data = tracks_df[tracks_df['track_id'] == track_id]
+                    if len(track_data) > 0:
+                        # Plot trajectory path
+                        ax.plot(track_data['lon'], track_data['lat'], 
+                               'b-', alpha=0.7, linewidth=2, 
+                               label='Track' if track_id == tracks_df['track_id'].iloc[0] else "")
+                        # Mark current position
+                        current_pos = track_data.iloc[-1]
+                        ax.scatter(current_pos['lon'], current_pos['lat'], 
+                                  c='blue', s=100, marker='o', zorder=5)
+            
+            # Plot truth data up to current time
+            if filtered_data.get('truth') is not None and len(filtered_data['truth']) > 0:
+                truth_df = filtered_data['truth']
+                for truth_id in truth_df['id'].unique():
+                    truth_data = truth_df[truth_df['id'] == truth_id]
+                    if len(truth_data) > 0:
+                        # Plot trajectory path
+                        ax.plot(truth_data['lon'], truth_data['lat'], 
+                               'r--', alpha=0.7, linewidth=2,
+                               label='Truth' if truth_id == truth_df['id'].iloc[0] else "")
+                        # Mark current position
+                        current_pos = truth_data.iloc[-1]
+                        ax.scatter(current_pos['lon'], current_pos['lat'], 
+                                  c='red', s=100, marker='s', zorder=5)
+            
+            # Set coordinate ranges
+            if lat_range:
+                ax.set_ylim(lat_range)
+            if lon_range:
+                ax.set_xlim(lon_range)
+            
+            # Styling and labels
+            if current_time:
+                title = f'Animation - Frame {current_frame + 1}/{max_frames} - Time: {current_time}'
+            else:
+                title = f'Animation - Frame {current_frame + 1}/{max_frames}'
+                
+            ax.set_title(title, fontsize=14, fontweight='bold')
+            ax.set_xlabel('Longitude', fontsize=12)
+            ax.set_ylabel('Latitude', fontsize=12)
+            ax.grid(True, alpha=0.3)
+            ax.set_aspect('equal', adjustable='box')
+            
+            # Add legend if there's data
+            if (filtered_data.get('tracks') is not None and len(filtered_data['tracks']) > 0) or \
+               (filtered_data.get('truth') is not None and len(filtered_data['truth']) > 0):
+                ax.legend()
+            
+            # Fix axis formatting
+            ax.ticklabel_format(style='plain', useOffset=False)
+            
+            # Format ticks for small coordinate ranges
+            if lat_range and abs(lat_range[1] - lat_range[0]) < 1.0:
+                import numpy as np
+                y_ticks = np.linspace(lat_range[0], lat_range[1], 6)
+                ax.set_yticks(y_ticks)
+                ax.set_yticklabels([f'{tick:.4f}' for tick in y_ticks])
+                
+            if lon_range and abs(lon_range[1] - lon_range[0]) < 1.0:
+                import numpy as np
+                x_ticks = np.linspace(lon_range[0], lon_range[1], 6)
+                ax.set_xticks(x_ticks)
+                ax.set_xticklabels([f'{tick:.4f}' for tick in x_ticks])
+            
+            # Update canvas
+            self.figure.tight_layout()
+            self.canvas.draw()
+            
+            # Initialize limit tracking for animation frame
+            self._initialize_limit_tracking()
+            
+        except Exception as e:
+            self.logger.error(f"Error creating animation frame: {e}")
+            self._show_error_plot(f"Animation Error: {str(e)}")
     
     def export_plot(self):
         """Export the current plot to a file."""

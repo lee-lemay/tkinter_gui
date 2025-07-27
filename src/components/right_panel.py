@@ -316,6 +316,9 @@ class RightPanel:
         
         self.canvas_widgets['geospatial'] = MatplotlibCanvas(canvas_frame)
         self.canvas_widgets['geospatial'].frame.pack(fill="both", expand=True)
+        
+        # Set zoom callback for coordinate range updates
+        self.canvas_widgets['geospatial'].set_zoom_callback(self._on_geospatial_zoom)
     
     def _create_error_analysis_tab(self):
         """Create the North/East error analysis tab with track selection."""
@@ -532,6 +535,13 @@ class RightPanel:
         self.anim_current_frame = tk.IntVar(value=0)
         self.anim_speed = tk.DoubleVar(value=1.0)
         
+        # Animation data and timing
+        self.anim_data = None
+        self.anim_timestamps = []
+        self.anim_max_frames = 0
+        self.anim_timer_id = None
+        self.base_interval = 100  # Base interval in milliseconds (0.1 seconds to match data)
+        
         # First row - main playback controls
         playback_row1 = ttk.Frame(playback_frame)
         playback_row1.pack(fill="x", padx=5, pady=2)
@@ -548,10 +558,17 @@ class RightPanel:
                                   command=self._animation_stop, state="disabled")
         self.stop_btn.pack(side="left", padx=2)
         
-        ttk.Button(playback_row1, text="⏮", width=3,
-                  command=self._animation_step_back, state="disabled").pack(side="left", padx=2)
-        ttk.Button(playback_row1, text="⏭", width=3,
-                  command=self._animation_step_forward, state="disabled").pack(side="left", padx=2)
+        self.step_back_btn = ttk.Button(playback_row1, text="⏮", width=3,
+                                       command=self._animation_step_back, state="disabled")
+        self.step_back_btn.pack(side="left", padx=2)
+        
+        self.step_forward_btn = ttk.Button(playback_row1, text="⏭", width=3,
+                                          command=self._animation_step_forward, state="disabled")
+        self.step_forward_btn.pack(side="left", padx=2)
+        
+        # Frame indicator
+        self.frame_label = ttk.Label(playback_row1, text="Frame: 0/0")
+        self.frame_label.pack(side="left", padx=(10, 2))
 
         # Second row - speed control
         playback_row2 = ttk.Frame(playback_frame)
@@ -574,6 +591,9 @@ class RightPanel:
         
         self.canvas_widgets['animation'] = MatplotlibCanvas(canvas_frame)
         self.canvas_widgets['animation'].frame.pack(fill="both", expand=True)
+        
+        # Set zoom callback for coordinate range updates
+        self.canvas_widgets['animation'].set_zoom_callback(self._on_animation_zoom)
     
     
     def _create_demo_plot(self):
@@ -1056,6 +1076,10 @@ class RightPanel:
     def _on_geo_range_changed(self, *args):
         """Handle changes in geospatial coordinate ranges."""
         try:
+            # Skip if we're updating ranges from zoom event
+            if hasattr(self, '_updating_geo_ranges') and self._updating_geo_ranges:
+                return
+                
             # Validate ranges
             lat_min = self.geo_lat_min_var.get()
             lat_max = self.geo_lat_max_var.get()
@@ -1077,6 +1101,10 @@ class RightPanel:
     def _on_anim_range_changed(self, *args):
         """Handle changes in animation coordinate ranges."""
         try:
+            # Skip if we're updating ranges from zoom event
+            if hasattr(self, '_updating_anim_ranges') and self._updating_anim_ranges:
+                return
+                
             # Validate ranges
             lat_min = self.anim_lat_min_var.get()
             lat_max = self.anim_lat_max_var.get()
@@ -1094,6 +1122,63 @@ class RightPanel:
             
         except Exception as e:
             self.logger.error(f"Error updating animation plot after range change: {e}")
+            self.logger.error(f"Error updating animation plot after range change: {e}")
+    
+    def _on_geospatial_zoom(self, xlim, ylim):
+        """Handle zoom/pan events on geospatial plot."""
+        try:
+            # Update the coordinate range controls to match the new zoom level
+            lon_min, lon_max = xlim
+            lat_min, lat_max = ylim
+            
+            # Set a flag to prevent recursive updates
+            if not hasattr(self, '_updating_geo_ranges'):
+                self._updating_geo_ranges = True
+                
+                # Update the variables
+                self.geo_lat_min_var.set(lat_min)
+                self.geo_lat_max_var.set(lat_max)
+                self.geo_lon_min_var.set(lon_min)
+                self.geo_lon_max_var.set(lon_max)
+                
+                self._updating_geo_ranges = False
+                
+                self.logger.debug(f"Geospatial zoom updated ranges: lat {lat_min:.4f}-{lat_max:.4f}, lon {lon_min:.4f}-{lon_max:.4f}")
+            
+        except Exception as e:
+            self.logger.error(f"Error handling geospatial zoom: {e}")
+            if hasattr(self, '_updating_geo_ranges'):
+                self._updating_geo_ranges = False
+    
+    def _on_animation_zoom(self, xlim, ylim):
+        """Handle zoom/pan events on animation plot."""
+        try:
+            # Update the coordinate range controls to match the new zoom level
+            lon_min, lon_max = xlim
+            lat_min, lat_max = ylim
+            
+            # Set a flag to prevent recursive updates
+            if not hasattr(self, '_updating_anim_ranges'):
+                self._updating_anim_ranges = True
+                
+                # Update the variables
+                self.anim_lat_min_var.set(lat_min)
+                self.anim_lat_max_var.set(lat_max)
+                self.anim_lon_min_var.set(lon_min)
+                self.anim_lon_max_var.set(lon_max)
+                
+                self._updating_anim_ranges = False
+                
+                # If animation is currently playing, update the current frame
+                if hasattr(self, 'anim_data') and self.anim_data and not self.anim_playing.get():
+                    self._update_animation_frame()
+                
+                self.logger.debug(f"Animation zoom updated ranges: lat {lat_min:.4f}-{lat_max:.4f}, lon {lon_min:.4f}-{lon_max:.4f}")
+            
+        except Exception as e:
+            self.logger.error(f"Error handling animation zoom: {e}")
+            if hasattr(self, '_updating_anim_ranges'):
+                self._updating_anim_ranges = False
     
     # Coordinate Range Initialization Methods
     def _initialize_coordinate_ranges(self):
@@ -1282,10 +1367,19 @@ class RightPanel:
     # Animation Control Methods
     def _animation_play(self):
         """Start animation playback."""
+        if self.anim_data is None or self.anim_max_frames == 0:
+            self.logger.warning("No animation data available for playback")
+            return
+            
         self.anim_playing.set(True)
         self.play_btn.config(state="disabled")
         self.pause_btn.config(state="normal")
-        # TODO: Implement actual animation playback logic
+        self.stop_btn.config(state="normal")
+        self.step_back_btn.config(state="disabled")
+        self.step_forward_btn.config(state="disabled")
+        
+        # Start animation timer
+        self._animation_timer()
         self.logger.info("Animation play started")
     
     def _animation_pause(self):
@@ -1293,6 +1387,14 @@ class RightPanel:
         self.anim_playing.set(False)
         self.play_btn.config(state="normal")
         self.pause_btn.config(state="disabled")
+        self.step_back_btn.config(state="normal")
+        self.step_forward_btn.config(state="normal")
+        
+        # Cancel timer
+        if self.anim_timer_id:
+            self.canvas_widgets['animation'].frame.after_cancel(self.anim_timer_id)
+            self.anim_timer_id = None
+            
         self.logger.info("Animation paused")
     
     def _animation_stop(self):
@@ -1301,6 +1403,16 @@ class RightPanel:
         self.anim_current_frame.set(0)
         self.play_btn.config(state="normal")
         self.pause_btn.config(state="disabled")
+        self.step_back_btn.config(state="normal")
+        self.step_forward_btn.config(state="normal")
+        
+        # Cancel timer
+        if self.anim_timer_id:
+            self.canvas_widgets['animation'].frame.after_cancel(self.anim_timer_id)
+            self.anim_timer_id = None
+            
+        # Update plot to show initial frame
+        self._update_animation_frame()
         self.logger.info("Animation stopped")
     
     def _animation_step_back(self):
@@ -1308,16 +1420,83 @@ class RightPanel:
         current = self.anim_current_frame.get()
         if current > 0:
             self.anim_current_frame.set(current - 1)
+            self._update_animation_frame()
         self.logger.info(f"Animation stepped back to frame {self.anim_current_frame.get()}")
     
     def _animation_step_forward(self):
         """Step animation forward one frame."""
         current = self.anim_current_frame.get()
-        # TODO: Get max frames from animation data
-        max_frames = 100  # Placeholder
-        if current < max_frames - 1:
+        if current < self.anim_max_frames - 1:
             self.anim_current_frame.set(current + 1)
+            self._update_animation_frame()
         self.logger.info(f"Animation stepped forward to frame {self.anim_current_frame.get()}")
+        
+    def _animation_timer(self):
+        """Timer function for animation playback."""
+        if not self.anim_playing.get():
+            return
+            
+        current_frame = self.anim_current_frame.get()
+        
+        # Check if we've reached the end
+        if current_frame >= self.anim_max_frames - 1:
+            self._animation_stop()
+            return
+            
+        # Advance to next frame
+        self.anim_current_frame.set(current_frame + 1)
+        self._update_animation_frame()
+        
+        # Calculate interval based on speed (speed 1.0 = base_interval)
+        interval = int(self.base_interval / self.anim_speed.get())
+        interval = max(10, interval)  # Minimum 10ms interval
+        
+        # Schedule next update
+        self.anim_timer_id = self.canvas_widgets['animation'].frame.after(interval, self._animation_timer)
+    
+    def _update_animation_frame(self):
+        """Update the animation plot to show current frame."""
+        if self.anim_data is None:
+            return
+            
+        current_frame = self.anim_current_frame.get()
+        
+        # Update frame label
+        self.frame_label.config(text=f"Frame: {current_frame + 1}/{self.anim_max_frames}")
+        
+        # Get data up to current timestamp
+        if current_frame < len(self.anim_timestamps):
+            current_time = self.anim_timestamps[current_frame]
+            
+            # Filter data to current time
+            filtered_data = self._filter_animation_data_to_time(current_time)
+            
+            # Update plot
+            self.canvas_widgets['animation'].create_animation_frame(filtered_data, current_frame, self.anim_max_frames)
+    
+    def _filter_animation_data_to_time(self, current_time):
+        """Filter animation data to show only data up to current time."""
+        filtered_data = {
+            'tracks': None,
+            'truth': None,
+            'current_time': current_time,
+            'lat_range': self.anim_data.get('lat_range') if self.anim_data else None,
+            'lon_range': self.anim_data.get('lon_range') if self.anim_data else None
+        }
+        
+        # Filter tracks data
+        if self.anim_data and 'tracks' in self.anim_data and self.anim_data['tracks'] is not None:
+            tracks_df = self.anim_data['tracks']
+            if 'timestamp' in tracks_df.columns:
+                filtered_data['tracks'] = tracks_df[tracks_df['timestamp'] <= current_time]
+        
+        # Filter truth data
+        if self.anim_data and 'truth' in self.anim_data and self.anim_data['truth'] is not None:
+            truth_df = self.anim_data['truth']
+            if 'timestamp' in truth_df.columns:
+                filtered_data['truth'] = truth_df[truth_df['timestamp'] <= current_time]
+                
+        return filtered_data
     
     def _on_speed_changed(self, *args):
         """Handle speed scale changes."""
@@ -1406,12 +1585,43 @@ class RightPanel:
                 self.logger.error(f"Error preparing animation data: {plot_data['error']}")
                 return
             
-            # Create the plot
-            self.canvas_widgets['animation'].create_simple_plot(plot_data)
-            
-            # Enable playback controls
-            self.play_btn.config(state="normal")
-            self.stop_btn.config(state="normal")
+            # Store animation data and prepare timestamps
+            self.anim_data = plot_data.get('animation_data', {})
+            if self.anim_data:
+                self.anim_data['lat_range'] = (lat_min, lat_max)
+                self.anim_data['lon_range'] = (lon_min, lon_max)
+                
+                # Extract all timestamps and sort them
+                timestamps = set()
+                
+                if 'tracks' in self.anim_data and self.anim_data['tracks'] is not None:
+                    tracks_df = self.anim_data['tracks']
+                    if 'timestamp' in tracks_df.columns:
+                        timestamps.update(tracks_df['timestamp'])
+                        
+                if 'truth' in self.anim_data and self.anim_data['truth'] is not None:
+                    truth_df = self.anim_data['truth']
+                    if 'timestamp' in truth_df.columns:
+                        timestamps.update(truth_df['timestamp'])
+                
+                self.anim_timestamps = sorted(list(timestamps))
+                self.anim_max_frames = len(self.anim_timestamps)
+                
+                # Reset to first frame
+                self.anim_current_frame.set(0)
+                
+                # Show initial frame
+                self._update_animation_frame()
+                
+                # Enable playback controls
+                self.play_btn.config(state="normal")
+                self.stop_btn.config(state="normal")
+                self.step_back_btn.config(state="normal")
+                self.step_forward_btn.config(state="normal")
+                
+                self.logger.info(f"Animation prepared with {self.anim_max_frames} frames")
+            else:
+                self.logger.error("No animation data available")
             
         except Exception as e:
             self.logger.error(f"Error showing animation plot: {e}")
