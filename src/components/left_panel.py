@@ -121,6 +121,9 @@ class LeftPanel:
         # Bind selection event
         self.dataset_tree.bind("<<TreeviewSelect>>", self._on_dataset_selection)
         
+        # Bind double-click to load dataset
+        self.dataset_tree.bind("<Double-1>", self._on_dataset_double_click)
+        
         # Control buttons frame
         buttons_frame = ttk.Frame(overview_frame)
         buttons_frame.pack(fill="x", pady=(5, 0))
@@ -274,62 +277,103 @@ class LeftPanel:
     def _on_dataset_selection(self, event):
         """Handle dataset selection in the treeview."""
         selection = self.dataset_tree.selection()
-        if selection:
+        if selection and self.controller:
             dataset_name = self.dataset_tree.item(selection[0])["text"]
             self.logger.debug(f"Dataset selected: {dataset_name}")
-            # TODO: Update focus dataset
+            # Set as focus dataset
+            self.controller.set_focus_dataset(dataset_name)
+    
+    def _on_dataset_double_click(self, event):
+        """Handle double-click on dataset to load it."""
+        selection = self.dataset_tree.selection()
+        if selection and self.controller:
+            dataset_name = self.dataset_tree.item(selection[0])["text"]
+            self.logger.debug(f"Dataset double-clicked for loading: {dataset_name}")
+            # Load the dataset
+            self.controller.load_single_dataset(dataset_name)
     
     def _on_use_pkl_files(self):
         """Handle Use PKL Files button click."""
         self.logger.info("Use PKL files requested")
         if self.controller:
-            # TODO: Implement PKL file loading
-            pass
+            # TODO: Implement PKL file loading in future phase
+            selected = self._get_selected_dataset_names()
+            if selected:
+                message = f"PKL file loading for:\\n\\n" + "\\n".join([f"• {name}" for name in selected])
+                message += "\\n\\nThis feature will be implemented in a future phase."
+                self.controller.view.show_info("PKL Loading", message)
+            else:
+                self.controller.view.show_info("No Selection", "Please select datasets first.")
     
     def _on_process_datasets(self):
         """Handle Process Selected button click."""
         self.logger.info("Process datasets requested")
         if self.controller:
             selected = self._get_selected_dataset_names()
-            self.controller.process_datasets(selected)
+            if selected:
+                self.controller.process_datasets(selected)
+            else:
+                self.controller.view.show_info("No Selection", "Please select datasets to process.")
     
     def _on_reprocess(self):
         """Handle Reprocess button click."""
         self.logger.info("Reprocess requested")
         if self.controller:
-            # TODO: Implement reprocessing
-            pass
+            focus_dataset = self.controller.get_focus_dataset()
+            if focus_dataset:
+                self.controller.process_datasets([focus_dataset.name])
+            else:
+                self.controller.view.show_info("No Focus Dataset", "Please select a focus dataset first.")
     
     def _on_focus_changed(self, event):
         """Handle focus dataset selection change."""
         selected = self.focus_combo_var.get()
         self.logger.debug(f"Focus dataset changed to: {selected}")
-        if self.controller:
-            # TODO: Update focus dataset in controller
-            pass
+        if self.controller and selected:
+            self.controller.set_focus_dataset(selected)
     
     def _on_select_all(self):
         """Handle Select All button click."""
-        # TODO: Select all datasets in the tree
         self.logger.debug("Select all datasets")
+        if self.controller:
+            state = self.controller.get_state()
+            dataset_names = list(state.datasets.keys())
+            
+            # Mark all items as selected in the tree (visual feedback)
+            for item in self.dataset_tree.get_children():
+                self.dataset_tree.selection_add(item)
+                
+            # Add all to controller selection
+            state.set_selected_datasets(dataset_names)
     
     def _on_select_none(self):
         """Handle Select None button click."""
-        # TODO: Deselect all datasets in the tree
         self.logger.debug("Select no datasets")
+        if self.controller:
+            # Clear tree selection
+            self.dataset_tree.selection_remove(self.dataset_tree.selection())
+            
+            # Clear controller selection
+            state = self.controller.get_state()
+            state.set_selected_datasets([])
     
     def _on_refresh(self):
         """Handle Refresh button click."""
         self.logger.info("Refresh requested")
         if self.controller:
-            # TODO: Refresh dataset list
-            pass
+            self.controller.refresh_datasets()
     
     # Helper Methods
     def _get_selected_dataset_names(self):
         """Get the names of selected datasets."""
-        # TODO: Implement based on tree selection
-        return []
+        selected_items = self.dataset_tree.selection()
+        dataset_names = []
+        
+        for item in selected_items:
+            dataset_name = self.dataset_tree.item(item)["text"]
+            dataset_names.append(dataset_name)
+        
+        return dataset_names
     
     def _update_dataset_tree(self, datasets):
         """Update the dataset treeview with current datasets."""
@@ -339,14 +383,19 @@ class LeftPanel:
         
         # Add datasets with detailed information
         for name, dataset_info in datasets.items():
-            # Loaded status (green check or red X) based on DatasetStatus
-            from src.models.application_state import DatasetStatus
-            loaded_status = "✓" if dataset_info.status == DatasetStatus.LOADED else "✗"
+            # Loaded status based on DatasetStatus
+            if dataset_info.status.value == "loaded":
+                loaded_status = "✓"
+            elif dataset_info.status.value == "loading":
+                loaded_status = "⏳"
+            elif dataset_info.status.value == "error":
+                loaded_status = "❌"
+            else:
+                loaded_status = "✗"
             
             # Date (formatted for display)
             date_str = "-"
-            if hasattr(dataset_info, 'last_modified') and dataset_info.last_modified:
-                # Format date to show just MM/DD/YY if it's a full timestamp
+            if dataset_info.last_modified:
                 try:
                     from datetime import datetime
                     if isinstance(dataset_info.last_modified, str):
@@ -368,7 +417,7 @@ class LeftPanel:
             
             # Size in MB (formatted to 1 decimal place)
             size_mb_str = "-"
-            if hasattr(dataset_info, 'size_bytes') and dataset_info.size_bytes and dataset_info.size_bytes > 0:
+            if dataset_info.size_bytes and dataset_info.size_bytes > 0:
                 size_mb = dataset_info.size_bytes / (1024 * 1024)
                 if size_mb >= 100:
                     size_mb_str = f"{size_mb:.0f}"
@@ -378,37 +427,27 @@ class LeftPanel:
                     size_mb_str = f"{size_mb:.2f}"
             
             # PKL file existence (green check or red X)
-            pkl_status = "✓" if hasattr(dataset_info, 'has_pkl') and dataset_info.has_pkl else "✗"
+            pkl_status = "✓" if dataset_info.has_pkl else "✗"
             
-            # Truth data indicator (count or check mark)
-            truth_str = "-"
-            if hasattr(dataset_info, 'truth_count') and dataset_info.truth_count is not None:
-                if dataset_info.truth_count > 0:
-                    truth_str = str(dataset_info.truth_count)
-                else:
-                    truth_str = "0"
-            elif hasattr(dataset_info, 'has_truth') and dataset_info.has_truth:
-                truth_str = "✓"
-            
-            # Detections indicator (count or check mark)
-            detections_str = "-"
-            if hasattr(dataset_info, 'detections_count') and dataset_info.detections_count is not None:
-                if dataset_info.detections_count > 0:
-                    detections_str = str(dataset_info.detections_count)
-                else:
-                    detections_str = "0"
-            elif hasattr(dataset_info, 'has_detections') and dataset_info.has_detections:
-                detections_str = "✓"
-            
-            # Tracks indicator (count or check mark)
-            tracks_str = "-"
-            if hasattr(dataset_info, 'tracks_count') and dataset_info.tracks_count is not None:
-                if dataset_info.tracks_count > 0:
-                    tracks_str = str(dataset_info.tracks_count)
+            # Data indicators - show counts if loaded, otherwise availability
+            if dataset_info.status.value == "loaded":
+                # Show actual counts for loaded datasets
+                truth_str = str(len(dataset_info.truth_df)) if dataset_info.truth_df is not None else "0"
+                detections_str = str(len(dataset_info.detections_df)) if dataset_info.detections_df is not None else "0"
+                
+                # For tracks, count unique track IDs if available
+                if dataset_info.tracks_df is not None and not dataset_info.tracks_df.empty:
+                    if 'track_id' in dataset_info.tracks_df.columns:
+                        tracks_str = str(len(dataset_info.tracks_df['track_id'].unique()))
+                    else:
+                        tracks_str = str(len(dataset_info.tracks_df))
                 else:
                     tracks_str = "0"
-            elif hasattr(dataset_info, 'has_tracks') and dataset_info.has_tracks:
-                tracks_str = "✓"
+            else:
+                # Show availability indicators for unloaded datasets
+                truth_str = "✓" if dataset_info.has_truth else "✗"
+                detections_str = "✓" if dataset_info.has_detections else "✗"
+                tracks_str = "✓" if dataset_info.has_tracks else "✗"
             
             # Insert item with all detailed information
             self.dataset_tree.insert(
@@ -423,10 +462,39 @@ class LeftPanel:
         if dataset_info:
             self.focus_name_var.set(dataset_info.name)
             self.focus_date_var.set(dataset_info.last_modified or "-")
-            # TODO: Set actual counts when available
-            self.focus_tracks_var.set("0")
-            self.focus_detections_var.set("0")
-            self.focus_truth_var.set("0")
+            
+            # Show actual counts if dataset is loaded
+            if dataset_info.status.value == "loaded":
+                # Calculate actual counts from loaded DataFrames
+                tracks_count = 0
+                detections_count = 0
+                truth_count = 0
+                
+                if dataset_info.tracks_df is not None and not dataset_info.tracks_df.empty:
+                    # Count unique track IDs
+                    if 'track_id' in dataset_info.tracks_df.columns:
+                        tracks_count = len(dataset_info.tracks_df['track_id'].unique())
+                    else:
+                        tracks_count = len(dataset_info.tracks_df)
+                
+                if dataset_info.detections_df is not None and not dataset_info.detections_df.empty:
+                    detections_count = len(dataset_info.detections_df)
+                
+                if dataset_info.truth_df is not None and not dataset_info.truth_df.empty:
+                    truth_count = len(dataset_info.truth_df)
+                
+                self.focus_tracks_var.set(str(tracks_count))
+                self.focus_detections_var.set(str(detections_count))
+                self.focus_truth_var.set(str(truth_count))
+            else:
+                # Show availability indicators if not loaded
+                tracks_status = "✓" if dataset_info.has_tracks else "✗"
+                detections_status = "✓" if dataset_info.has_detections else "✗"
+                truth_status = "✓" if dataset_info.has_truth else "✗"
+                
+                self.focus_tracks_var.set(tracks_status)
+                self.focus_detections_var.set(detections_status)
+                self.focus_truth_var.set(truth_status)
         else:
             self.focus_name_var.set("None")
             self.focus_date_var.set("-")

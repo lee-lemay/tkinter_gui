@@ -7,8 +7,13 @@ between the model (ApplicationState) and view (MainWindow) components.
 
 import logging
 from typing import Any, Optional
+from pathlib import Path
+from tkinter import filedialog, messagebox
+import threading
 
-from ..models.application_state import ApplicationState
+from ..models.application_state import ApplicationState, DatasetInfo, DatasetStatus
+from ..utils.dataset_scanner import DatasetScanner
+from ..business.data_interface import MockDataInterface
 
 
 class ApplicationController:
@@ -28,6 +33,10 @@ class ApplicationController:
         self.model = model
         self.view = view
         self.logger = logging.getLogger(__name__)
+        
+        # Initialize business logic components
+        self.dataset_scanner = DatasetScanner()
+        self.data_interface = MockDataInterface()
         
         # Register as an observer of the model
         self.model.add_observer(self)
@@ -88,20 +97,24 @@ class ApplicationController:
     
     # Menu Actions
     def on_menu_file_open(self):
-        """Handle File -> Open menu action."""
+        """Handle File -> Open Dataset Directory menu action."""
         try:
-            self.logger.info("File open requested")
-            # TODO: Implement file open dialog
-            self.model.processing_status = "Opening file..."
+            self.logger.info("Dataset directory selection requested")
             
-            # For now, just show a placeholder message
-            self.view.show_info("Not Implemented", "File open functionality will be implemented in Phase 2")
+            # Show directory selection dialog
+            directory_path = filedialog.askdirectory(
+                title="Select Dataset Directory",
+                mustexist=True
+            )
             
-            self.model.processing_status = "Ready"
+            if directory_path:
+                self.load_dataset_directory(directory_path)
+            else:
+                self.logger.debug("Directory selection cancelled")
             
         except Exception as e:
-            self.logger.error(f"Error opening file: {e}")
-            self.view.show_error("Error", f"Failed to open file: {e}")
+            self.logger.error(f"Error opening directory dialog: {e}")
+            self.view.show_error("Error", f"Failed to open directory selection: {e}")
             self.model.processing_status = "Ready"
     
     def on_menu_file_exit(self):
@@ -142,7 +155,7 @@ class ApplicationController:
             "Version 1.0\\n\\n"
             "A tkinter-based GUI for reviewing and analyzing\\n"
             "datasets containing truth, detection, and tracking data.\\n\\n"
-            "Phase 1: Core Infrastructure"
+            "Phase 3: Data Management - ACTIVE"
         )
         self.view.show_info("About", about_text)
     
@@ -173,7 +186,7 @@ class ApplicationController:
         """Get the currently focused dataset."""
         return self.model.get_focus_dataset_info()
     
-    # Dataset Management (placeholder for future phases)
+    # Dataset Management - Phase 3 Implementation
     def load_dataset_directory(self, directory_path: str):
         """
         Load datasets from a directory.
@@ -183,13 +196,113 @@ class ApplicationController:
         """
         try:
             self.logger.info(f"Loading dataset directory: {directory_path}")
-            # TODO: Implement in Phase 2
-            self.view.show_info("Not Implemented", 
-                              f"Dataset loading will be implemented in Phase 2\\n"
-                              f"Directory: {directory_path}")
+            self.model.processing_status = "Scanning for datasets..."
+            
+            # Set the dataset directory in the model
+            self.model.dataset_directory = Path(directory_path)
+            
+            # Clear existing datasets
+            self.model.clear_datasets()
+            
+            # Scan for datasets in a separate thread to avoid blocking UI
+            threading.Thread(
+                target=self._scan_datasets_thread,
+                args=(Path(directory_path),),
+                daemon=True
+            ).start()
+            
         except Exception as e:
             self.logger.error(f"Error loading dataset directory: {e}")
             self.view.show_error("Error", f"Failed to load directory: {e}")
+            self.model.processing_status = "Ready"
+    
+    def _scan_datasets_thread(self, directory_path: Path):
+        """
+        Scan for datasets in a background thread.
+        
+        Args:
+            directory_path: Path to scan for datasets
+        """
+        try:
+            # Discover datasets
+            datasets = self.dataset_scanner.scan_directory(directory_path)
+            
+            # Add discovered datasets to the model
+            for dataset_info in datasets:
+                self.model.add_dataset(dataset_info)
+            
+            # Update status
+            if datasets:
+                self.model.processing_status = f"Found {len(datasets)} datasets"
+                self.logger.info(f"Successfully loaded {len(datasets)} datasets")
+            else:
+                self.model.processing_status = "No datasets found"
+                self.logger.warning("No valid datasets found in directory")
+            
+        except Exception as e:
+            self.logger.error(f"Error scanning for datasets: {e}")
+            self.model.processing_status = f"Error: {str(e)}"
+    
+    def load_single_dataset(self, dataset_name: str):
+        """
+        Load data for a single dataset.
+        
+        Args:
+            dataset_name: Name of the dataset to load
+        """
+        try:
+            dataset_info = self.model.datasets.get(dataset_name)
+            if not dataset_info:
+                raise ValueError(f"Dataset not found: {dataset_name}")
+            
+            self.logger.info(f"Loading dataset: {dataset_name}")
+            self.model.processing_status = f"Loading {dataset_name}..."
+            
+            # Update dataset status
+            dataset_info.status = DatasetStatus.LOADING
+            self.model.add_dataset(dataset_info)  # Trigger update
+            
+            # Load dataset in background thread
+            threading.Thread(
+                target=self._load_dataset_thread,
+                args=(dataset_info,),
+                daemon=True
+            ).start()
+            
+        except Exception as e:
+            self.logger.error(f"Error starting dataset load: {e}")
+            self.view.show_error("Error", f"Failed to load dataset: {e}")
+            self.model.processing_status = "Ready"
+    
+    def _load_dataset_thread(self, dataset_info: DatasetInfo):
+        """
+        Load a dataset in a background thread.
+        
+        Args:
+            dataset_info: Dataset information object
+        """
+        try:
+            # Load the dataset using the data interface
+            dataframes = self.data_interface.load_dataset(dataset_info.path)
+            
+            # Store the loaded data
+            dataset_info.truth_df = dataframes.get('truth')
+            dataset_info.detections_df = dataframes.get('detections')
+            dataset_info.tracks_df = dataframes.get('tracks')
+            
+            # Update status to loaded
+            dataset_info.status = DatasetStatus.LOADED
+            self.model.add_dataset(dataset_info)  # Trigger update
+            
+            self.model.processing_status = f"Loaded {dataset_info.name}"
+            self.logger.info(f"Successfully loaded dataset: {dataset_info.name}")
+            
+        except Exception as e:
+            self.logger.error(f"Error loading dataset {dataset_info.name}: {e}")
+            dataset_info.status = DatasetStatus.ERROR
+            dataset_info.error_message = str(e)
+            self.model.add_dataset(dataset_info)  # Trigger update
+            self.model.processing_status = f"Error loading {dataset_info.name}"
     
     def process_datasets(self, dataset_names: list):
         """
@@ -200,13 +313,64 @@ class ApplicationController:
         """
         try:
             self.logger.info(f"Processing datasets: {dataset_names}")
-            # TODO: Implement in Phase 3
-            self.view.show_info("Not Implemented", 
-                              f"Dataset processing will be implemented in Phase 3\\n"
-                              f"Datasets: {', '.join(dataset_names)}")
+            self.model.processing_status = f"Processing {len(dataset_names)} datasets..."
+            
+            # For now, just show a confirmation that processing would begin
+            dataset_list = "\\n".join([f"• {name}" for name in dataset_names])
+            message = (f"Dataset processing initiated for:\\n\\n{dataset_list}\\n\\n"
+                      f"This would normally trigger business logic analysis.")
+            
+            self.view.show_info("Processing Started", message)
+            self.model.processing_status = "Ready"
+            
         except Exception as e:
             self.logger.error(f"Error processing datasets: {e}")
             self.view.show_error("Error", f"Failed to process datasets: {e}")
+            self.model.processing_status = "Ready"
+    
+    # Dataset Selection Management
+    def set_focus_dataset(self, dataset_name: Optional[str]):
+        """
+        Set the focus dataset.
+        
+        Args:
+            dataset_name: Name of dataset to focus on, or None to clear focus
+        """
+        try:
+            self.model.focus_dataset = dataset_name
+            if dataset_name:
+                self.logger.debug(f"Focus set to dataset: {dataset_name}")
+            else:
+                self.logger.debug("Focus cleared")
+        except Exception as e:
+            self.logger.error(f"Error setting focus dataset: {e}")
+    
+    def toggle_dataset_selection(self, dataset_name: str):
+        """
+        Toggle the selection state of a dataset.
+        
+        Args:
+            dataset_name: Name of dataset to toggle
+        """
+        try:
+            if dataset_name in self.model.selected_datasets:
+                self.model.remove_selected_dataset(dataset_name)
+            else:
+                self.model.add_selected_dataset(dataset_name)
+        except Exception as e:
+            self.logger.error(f"Error toggling dataset selection: {e}")
+    
+    def refresh_datasets(self):
+        """Refresh the dataset list by rescanning the current directory."""
+        try:
+            if self.model.dataset_directory:
+                self.load_dataset_directory(str(self.model.dataset_directory))
+            else:
+                self.logger.warning("No dataset directory set for refresh")
+                self.view.show_info("No Directory", "Please select a dataset directory first")
+        except Exception as e:
+            self.logger.error(f"Error refreshing datasets: {e}")
+            self.view.show_error("Error", f"Failed to refresh datasets: {e}")
     
     # Cleanup
     def cleanup(self):
