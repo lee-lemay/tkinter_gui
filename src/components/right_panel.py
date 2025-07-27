@@ -79,6 +79,9 @@ class RightPanel:
         
         # Create tabs with matplotlib integration
         self._create_tabs()
+        
+        # Create demo plot for overview tab
+        self._create_demo_plot()
     
     def _create_tabs(self):
         """Create the analysis view tabs with matplotlib integration for Phase 5."""
@@ -170,14 +173,6 @@ class RightPanel:
         ttk.Button(buttons_frame, text="Select None", 
                   command=self._select_no_datasets).pack(side="left", padx=2)
         
-        # Create plot button
-        self.create_tracks_plot_btn = ttk.Button(
-            control_frame,
-            text="Show Track Counts",
-            command=self._show_track_counts_plot
-        )
-        self.create_tracks_plot_btn.pack(side="left", padx=5, pady=5)
-        
         # Refresh datasets button
         self.refresh_datasets_btn = ttk.Button(
             control_frame,
@@ -204,14 +199,6 @@ class RightPanel:
         # Control panel for statistics
         control_frame = ttk.LabelFrame(stats_frame, text="Statistics Controls")
         control_frame.pack(fill="x", padx=10, pady=10)
-        
-        # Dataset summary button
-        self.summary_btn = ttk.Button(
-            control_frame,
-            text="Show Track Counts",
-            command=self._show_track_counts
-        )
-        self.summary_btn.pack(side="left", padx=5, pady=5)
         
         # Create matplotlib canvas
         canvas_frame = ttk.Frame(stats_frame)
@@ -344,17 +331,6 @@ class RightPanel:
         # Bind selection change
         self.error_tracks_combo.bind('<<ComboboxSelected>>', self._on_error_track_selection_changed)
         
-        # Show error plot button
-        buttons_frame = ttk.Frame(control_frame)
-        buttons_frame.pack(fill="x", padx=5, pady=5)
-        
-        self.error_btn = ttk.Button(
-            buttons_frame,
-            text="Show North/East Errors",
-            command=self._show_north_east_error_plot
-        )
-        self.error_btn.pack(side="left", padx=5)
-        
         # Create matplotlib canvas
         canvas_frame = ttk.Frame(error_frame)
         canvas_frame.pack(fill="both", expand=True, padx=10, pady=10)
@@ -391,17 +367,6 @@ class RightPanel:
         # Bind selection change
         self.rms_tracks_combo.bind('<<ComboboxSelected>>', self._on_rms_track_selection_changed)
         
-        # Show RMS error plot button
-        buttons_frame = ttk.Frame(control_frame)
-        buttons_frame.pack(fill="x", padx=5, pady=5)
-        
-        self.rms_btn = ttk.Button(
-            buttons_frame,
-            text="Show 3D RMS Errors",
-            command=self._show_rms_error_plot
-        )
-        self.rms_btn.pack(side="left", padx=5)
-        
         # Create matplotlib canvas
         canvas_frame = ttk.Frame(rms_frame)
         canvas_frame.pack(fill="both", expand=True, padx=10, pady=10)
@@ -419,16 +384,9 @@ class RightPanel:
         control_frame.pack(fill="x", padx=10, pady=10)
         
         # Show lifetime plot button
-        self.lifetime_btn = ttk.Button(
-            control_frame,
-            text="Show Lifetimes",
-            command=self._show_lifetime_plot
-        )
-        self.lifetime_btn.pack(side="left", padx=5, pady=5)
-        
         # Options frame
         options_frame = ttk.Frame(control_frame)
-        options_frame.pack(side="left", padx=10)
+        options_frame.pack(fill="x", padx=5, pady=5)
         
         self.lifetime_tracks_var = tk.BooleanVar(value=True)
         self.lifetime_truth_var = tk.BooleanVar(value=False)
@@ -529,16 +487,9 @@ class RightPanel:
         playback_frame = ttk.LabelFrame(control_frame, text="Playback Controls")
         playback_frame.pack(fill="x", padx=5, pady=5)
         
-        # First row of playback controls
+        # Playback controls frame
         playback_row1 = ttk.Frame(playback_frame)
         playback_row1.pack(fill="x", padx=5, pady=2)
-        
-        self.animation_btn = ttk.Button(
-            playback_row1,
-            text="Generate Animation",
-            command=self._show_animation_plot
-        )
-        self.animation_btn.pack(side="left", padx=5)
         
         # Animation state variables
         self.anim_playing = tk.BooleanVar(value=False)
@@ -646,6 +597,149 @@ class RightPanel:
         except Exception as e:
             self.logger.error(f"Error auto-updating geospatial plot: {e}")
     
+    def _auto_update_error_plot(self):
+        """Auto-update error analysis plot when focus dataset changes."""
+        try:
+            if not self.plot_manager or not self.controller:
+                return
+            
+            app_state = self.controller.get_state()
+            focus_info = app_state.get_focus_dataset_info()
+            
+            # Only auto-update if we have a loaded focus dataset with data
+            if (focus_info and 
+                focus_info.status.value == "loaded" and 
+                focus_info.tracks_df is not None and not focus_info.tracks_df.empty and
+                focus_info.truth_df is not None and not focus_info.truth_df.empty):
+                
+                # Get plot configuration from UI
+                config = {
+                    'tracks_selection': getattr(self, 'error_tracks_var', tk.StringVar(value="all")).get()
+                }
+                
+                plot_data = self.plot_manager.prepare_plot_data('north_east_error', app_state, config)
+                
+                if 'error' not in plot_data and 'error_analysis' in self.canvas_widgets:
+                    self.canvas_widgets['error_analysis'].create_simple_plot(plot_data)
+                    self.logger.debug(f"Auto-updated error plot for dataset: {focus_info.name}")
+            
+        except Exception as e:
+            self.logger.error(f"Error auto-updating error plot: {e}")
+    
+    def _auto_update_rms_plot(self):
+        """Auto-update RMS error plot when focus dataset changes."""
+        try:
+            if not self.plot_manager or not self.controller:
+                return
+            
+            app_state = self.controller.get_state()
+            focus_info = app_state.get_focus_dataset_info()
+            
+            # Only auto-update if we have a loaded focus dataset with data
+            if (focus_info and 
+                focus_info.status.value == "loaded" and 
+                focus_info.tracks_df is not None and not focus_info.tracks_df.empty and
+                focus_info.truth_df is not None and not focus_info.truth_df.empty):
+                
+                # Get plot configuration from UI
+                config = {
+                    'tracks_selection': getattr(self, 'rms_tracks_var', tk.StringVar(value="all")).get()
+                }
+                
+                plot_data = self.plot_manager.prepare_plot_data('three_d_error', app_state, config)
+                
+                if 'error' not in plot_data and 'rms_error' in self.canvas_widgets:
+                    self.canvas_widgets['rms_error'].create_simple_plot(plot_data)
+                    self.logger.debug(f"Auto-updated RMS plot for dataset: {focus_info.name}")
+            
+        except Exception as e:
+            self.logger.error(f"Error auto-updating RMS plot: {e}")
+    
+    def _auto_update_lifetime_plot(self):
+        """Auto-update lifetime plot when focus dataset changes."""
+        try:
+            if not self.plot_manager or not self.controller:
+                return
+            
+            app_state = self.controller.get_state()
+            focus_info = app_state.get_focus_dataset_info()
+            
+            # Only auto-update if we have a loaded focus dataset with data
+            if (focus_info and 
+                focus_info.status.value == "loaded" and 
+                focus_info.tracks_df is not None and not focus_info.tracks_df.empty):
+                
+                plot_data = self.plot_manager.prepare_plot_data('lifetime', app_state, {})
+                
+                if 'error' not in plot_data and 'lifetime' in self.canvas_widgets:
+                    self.canvas_widgets['lifetime'].create_simple_plot(plot_data)
+                    self.logger.debug(f"Auto-updated lifetime plot for dataset: {focus_info.name}")
+            
+        except Exception as e:
+            self.logger.error(f"Error auto-updating lifetime plot: {e}")
+    
+    def _auto_update_animation_plot(self):
+        """Auto-update animation plot when focus dataset changes."""
+        try:
+            if not self.plot_manager or not self.controller:
+                return
+            
+            app_state = self.controller.get_state()
+            focus_info = app_state.get_focus_dataset_info()
+            
+            # Only auto-update if we have a loaded focus dataset with data
+            if (focus_info and 
+                focus_info.status.value == "loaded" and 
+                ((focus_info.tracks_df is not None and not focus_info.tracks_df.empty) or
+                 (focus_info.truth_df is not None and not focus_info.truth_df.empty))):
+                
+                # Get plot configuration from UI
+                config = {
+                    'tracks_selection': getattr(self, 'anim_tracks_var', tk.StringVar(value="all")).get(),
+                    'truth_selection': getattr(self, 'anim_truth_var', tk.StringVar(value="all")).get(),
+                    'lat_range': (getattr(self, 'anim_lat_min_var', tk.DoubleVar(value=-90.0)).get(),
+                                 getattr(self, 'anim_lat_max_var', tk.DoubleVar(value=90.0)).get()),
+                    'lon_range': (getattr(self, 'anim_lon_min_var', tk.DoubleVar(value=-180.0)).get(),
+                                 getattr(self, 'anim_lon_max_var', tk.DoubleVar(value=180.0)).get())
+                }
+                
+                plot_data = self.plot_manager.prepare_plot_data('lat_lon_animation', app_state, config)
+                
+                if 'error' not in plot_data and 'animation' in self.canvas_widgets:
+                    self.canvas_widgets['animation'].create_simple_plot(plot_data)
+                    # Enable playback controls if available
+                    if hasattr(self, 'play_btn'):
+                        self.play_btn.config(state="normal")
+                    if hasattr(self, 'stop_btn'):
+                        self.stop_btn.config(state="normal")
+                    self.logger.debug(f"Auto-updated animation plot for dataset: {focus_info.name}")
+            
+        except Exception as e:
+            self.logger.error(f"Error auto-updating animation plot: {e}")
+    
+    def _auto_update_statistics_plot(self):
+        """Auto-update statistics plot when focus dataset changes."""
+        try:
+            if not self.plot_manager or not self.controller:
+                return
+            
+            app_state = self.controller.get_state()
+            focus_info = app_state.get_focus_dataset_info()
+            
+            # Only auto-update if we have a loaded focus dataset with data
+            if (focus_info and 
+                focus_info.status.value == "loaded" and 
+                focus_info.tracks_df is not None and not focus_info.tracks_df.empty):
+                
+                plot_data = self.plot_manager.prepare_plot_data('visualization', app_state, {})
+                
+                if 'error' not in plot_data and 'visualization' in self.canvas_widgets:
+                    self.canvas_widgets['visualization'].create_simple_plot(plot_data)
+                    self.logger.debug(f"Auto-updated statistics plot for dataset: {focus_info.name}")
+            
+        except Exception as e:
+            self.logger.error(f"Error auto-updating statistics plot: {e}")
+    
     def _show_north_east_error_plot(self):
         """Show North/East error plot in the error analysis tab."""
         if not self.plot_manager or not self.controller:
@@ -735,23 +829,33 @@ class RightPanel:
                 # Update track counts display
                 self._show_track_counts()
                 
-                # Check if focus dataset is loaded and auto-update geospatial plot
+                # Check if focus dataset is loaded and auto-update all plots
                 focus_info = state.get_focus_dataset_info()
                 if focus_info and focus_info.status.value == "loaded":
                     self._auto_update_geospatial_plot()
+                    self._auto_update_error_plot()
+                    self._auto_update_rms_plot()
+                    self._auto_update_lifetime_plot()
+                    self._auto_update_animation_plot()
+                    self._auto_update_statistics_plot()
                 
-                self.logger.debug(f"Datasets changed, plots refreshed")
+                self.logger.debug(f"Datasets changed, all plots refreshed")
             
             elif event == "focus_changed":
                 # Refresh dataset selection when focus dataset changes
                 self._refresh_dataset_selection()
                 
-                # Auto-update geospatial plot if focus dataset is loaded
+                # Auto-update all plots if focus dataset is loaded
                 focus_info = state.get_focus_dataset_info()
                 if focus_info and focus_info.status.value == "loaded":
                     self._auto_update_geospatial_plot()
+                    self._auto_update_error_plot()
+                    self._auto_update_rms_plot()
+                    self._auto_update_lifetime_plot()
+                    self._auto_update_animation_plot()
+                    self._auto_update_statistics_plot()
                 
-                self.logger.debug(f"Focus changed, plots refreshed")
+                self.logger.debug(f"Focus changed, all plots refreshed")
             
         except Exception as e:
             self.logger.error(f"Error handling state change '{event}': {e}")
