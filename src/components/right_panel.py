@@ -151,13 +151,17 @@ class RightPanel:
         viz_frame = ttk.Frame(self.notebook)
         self.notebook.add(viz_frame, text="Visualization")
         
-        # Create control panel
+        # Create control panel with horizontal layout
         control_frame = ttk.LabelFrame(viz_frame, text="Track Counts Plot Controls")
         control_frame.pack(fill="x", padx=10, pady=10)
         
-        # Dataset selection frame
-        dataset_frame = ttk.LabelFrame(control_frame, text="Dataset Selection (default: all)")
-        dataset_frame.pack(fill="x", padx=5, pady=5)
+        # Main horizontal container
+        controls_container = ttk.Frame(control_frame)
+        controls_container.pack(fill="x", padx=5, pady=5)
+        
+        # Dataset selection frame (left section)
+        dataset_frame = ttk.LabelFrame(controls_container, text="Dataset Selection (default: all)")
+        dataset_frame.pack(side="left", fill="both", expand=True, padx=5)
         
         # Dataset selection variables and controls
         self.dataset_selection_vars = {}
@@ -173,13 +177,17 @@ class RightPanel:
         ttk.Button(buttons_frame, text="Select None", 
                   command=self._select_no_datasets).pack(side="left", padx=2)
         
+        # Actions frame (right section)
+        actions_frame = ttk.LabelFrame(controls_container, text="Actions")
+        actions_frame.pack(side="left", fill="y", padx=5)
+        
         # Refresh datasets button
         self.refresh_datasets_btn = ttk.Button(
-            control_frame,
+            actions_frame,
             text="Refresh Datasets",
             command=self._refresh_dataset_selection
         )
-        self.refresh_datasets_btn.pack(side="left", padx=5, pady=5)
+        self.refresh_datasets_btn.pack(padx=5, pady=5)
         
         # Create matplotlib canvas
         canvas_frame = ttk.Frame(viz_frame)
@@ -215,13 +223,17 @@ class RightPanel:
         geo_frame = ttk.Frame(self.notebook)
         self.notebook.add(geo_frame, text="Geospatial")
         
-        # Control panel
+        # Control panel with horizontal layout
         control_frame = ttk.LabelFrame(geo_frame, text="Geospatial Plot Controls")
         control_frame.pack(fill="x", padx=10, pady=10)
         
-        # Data selection frame
-        data_frame = ttk.LabelFrame(control_frame, text="Data Selection")
-        data_frame.pack(fill="x", padx=5, pady=5)
+        # Main horizontal container for all control sections
+        controls_container = ttk.Frame(control_frame)
+        controls_container.pack(fill="x", padx=5, pady=5)
+        
+        # Data selection frame (left section)
+        data_frame = ttk.LabelFrame(controls_container, text="Data Selection")
+        data_frame.pack(side="left", fill="y", padx=5)
         
         # Track selection
         tracks_frame = ttk.Frame(data_frame)
@@ -243,9 +255,9 @@ class RightPanel:
                                           values=["all", "some", "none"], state="readonly", width=10)
         self.geo_truth_combo.pack(side="left", padx=5)
         
-        # Coordinate range frame
-        range_frame = ttk.LabelFrame(control_frame, text="Coordinate Range")
-        range_frame.pack(fill="x", padx=5, pady=5)
+        # Coordinate range frame (center section)
+        range_frame = ttk.LabelFrame(controls_container, text="Coordinate Range")
+        range_frame.pack(side="left", fill="y", padx=5)
         
         # Latitude range
         lat_frame = ttk.Frame(range_frame)
@@ -255,13 +267,13 @@ class RightPanel:
         ttk.Label(lat_frame, text="Min:").pack(side="left", padx=(10, 2))
         self.geo_lat_min_var = tk.DoubleVar(value=-90.0)
         self.geo_lat_min_spin = ttk.Spinbox(lat_frame, from_=-90.0, to=90.0, increment=0.1,
-                                          textvariable=self.geo_lat_min_var, width=10, format="%.3f")
+                                          textvariable=self.geo_lat_min_var, width=8, format="%.1f")
         self.geo_lat_min_spin.pack(side="left", padx=2)
         
         ttk.Label(lat_frame, text="Max:").pack(side="left", padx=(10, 2))
         self.geo_lat_max_var = tk.DoubleVar(value=90.0)
         self.geo_lat_max_spin = ttk.Spinbox(lat_frame, from_=-90.0, to=90.0, increment=0.1,
-                                          textvariable=self.geo_lat_max_var, width=10, format="%.3f")
+                                          textvariable=self.geo_lat_max_var, width=8, format="%.1f")
         self.geo_lat_max_spin.pack(side="left", padx=2)
         
         # Longitude range
@@ -272,28 +284,21 @@ class RightPanel:
         ttk.Label(lon_frame, text="Min:").pack(side="left", padx=(10, 2))
         self.geo_lon_min_var = tk.DoubleVar(value=-180.0)
         self.geo_lon_min_spin = ttk.Spinbox(lon_frame, from_=-180.0, to=180.0, increment=0.1,
-                                          textvariable=self.geo_lon_min_var, width=10, format="%.3f")
+                                          textvariable=self.geo_lon_min_var, width=8, format="%.1f")
         self.geo_lon_min_spin.pack(side="left", padx=2)
         
         ttk.Label(lon_frame, text="Max:").pack(side="left", padx=(10, 2))
         self.geo_lon_max_var = tk.DoubleVar(value=180.0)
         self.geo_lon_max_spin = ttk.Spinbox(lon_frame, from_=-180.0, to=180.0, increment=0.1,
-                                          textvariable=self.geo_lon_max_var, width=10, format="%.3f")
+                                          textvariable=self.geo_lon_max_var, width=8, format="%.1f")
         self.geo_lon_max_spin.pack(side="left", padx=2)
         
-        # Buttons frame
-        buttons_frame = ttk.Frame(control_frame)
-        buttons_frame.pack(fill="x", padx=5, pady=5)
-        
-        self.latlon_btn = ttk.Button(
-            buttons_frame,
-            text="Show Lat/Lon Plot",
-            command=self._show_lat_lon_plot
-        )
-        self.latlon_btn.pack(side="left", padx=5)
+        # Buttons frame (right section)
+        buttons_frame = ttk.LabelFrame(controls_container, text="Actions")
+        buttons_frame.pack(side="left", fill="y", padx=5)
         
         ttk.Button(buttons_frame, text="Reset Range", 
-                  command=self._reset_geo_range).pack(side="left", padx=5)
+                  command=self._reset_geo_range).pack(padx=5, pady=5)
         
         # Create matplotlib canvas
         canvas_frame = ttk.Frame(geo_frame)
@@ -307,17 +312,21 @@ class RightPanel:
         error_frame = ttk.Frame(self.notebook)
         self.notebook.add(error_frame, text="Error Analysis")
         
-        # Control panel
+        # Control panel with horizontal layout
         control_frame = ttk.LabelFrame(error_frame, text="Error Analysis Controls")
         control_frame.pack(fill="x", padx=10, pady=10)
         
+        # Main horizontal container
+        controls_container = ttk.Frame(control_frame)
+        controls_container.pack(fill="x", padx=5, pady=5)
+        
         # Track selection frame
-        track_frame = ttk.LabelFrame(control_frame, text="Track Selection")
-        track_frame.pack(fill="x", padx=5, pady=5)
+        track_frame = ttk.LabelFrame(controls_container, text="Track Selection")
+        track_frame.pack(side="left", fill="y", padx=5)
         
         # Track selection options
         selection_frame = ttk.Frame(track_frame)
-        selection_frame.pack(fill="x", padx=5, pady=2)
+        selection_frame.pack(fill="x", padx=5, pady=5)
         
         ttk.Label(selection_frame, text="Tracks:").pack(side="left")
         self.error_tracks_var = tk.StringVar(value="all")
@@ -343,17 +352,21 @@ class RightPanel:
         rms_frame = ttk.Frame(self.notebook)
         self.notebook.add(rms_frame, text="RMS Error")
         
-        # Control panel
+        # Control panel with horizontal layout
         control_frame = ttk.LabelFrame(rms_frame, text="RMS Error Controls")
         control_frame.pack(fill="x", padx=10, pady=10)
         
+        # Main horizontal container
+        controls_container = ttk.Frame(control_frame)
+        controls_container.pack(fill="x", padx=5, pady=5)
+        
         # Track selection frame
-        track_frame = ttk.LabelFrame(control_frame, text="Track Selection")
-        track_frame.pack(fill="x", padx=5, pady=5)
+        track_frame = ttk.LabelFrame(controls_container, text="Track Selection")
+        track_frame.pack(side="left", fill="y", padx=5)
         
         # Track selection options
         selection_frame = ttk.Frame(track_frame)
-        selection_frame.pack(fill="x", padx=5, pady=2)
+        selection_frame.pack(fill="x", padx=5, pady=5)
         
         ttk.Label(selection_frame, text="Tracks:").pack(side="left")
         self.rms_tracks_var = tk.StringVar(value="all")
@@ -417,13 +430,17 @@ class RightPanel:
         animation_frame = ttk.Frame(self.notebook)
         self.notebook.add(animation_frame, text="Animation")
         
-        # Control panel
+        # Control panel with horizontal layout
         control_frame = ttk.LabelFrame(animation_frame, text="Animation Controls")
         control_frame.pack(fill="x", padx=10, pady=10)
         
-        # Data selection frame
-        data_frame = ttk.LabelFrame(control_frame, text="Data Selection")
-        data_frame.pack(fill="x", padx=5, pady=5)
+        # Main horizontal container for all control sections
+        controls_container = ttk.Frame(control_frame)
+        controls_container.pack(fill="x", padx=5, pady=5)
+        
+        # Data selection frame (left section)
+        data_frame = ttk.LabelFrame(controls_container, text="Data Selection")
+        data_frame.pack(side="left", fill="y", padx=5)
         
         # Track selection
         tracks_frame = ttk.Frame(data_frame)
@@ -445,9 +462,9 @@ class RightPanel:
                                            values=["all", "some", "none"], state="readonly", width=10)
         self.anim_truth_combo.pack(side="left", padx=5)
         
-        # Coordinate range frame
-        anim_range_frame = ttk.LabelFrame(control_frame, text="Coordinate Range")
-        anim_range_frame.pack(fill="x", padx=5, pady=5)
+        # Coordinate range frame (center section)
+        anim_range_frame = ttk.LabelFrame(controls_container, text="Coordinate Range")
+        anim_range_frame.pack(side="left", fill="y", padx=5)
         
         # Latitude range
         anim_lat_frame = ttk.Frame(anim_range_frame)
@@ -457,13 +474,13 @@ class RightPanel:
         ttk.Label(anim_lat_frame, text="Min:").pack(side="left", padx=(10, 2))
         self.anim_lat_min_var = tk.DoubleVar(value=-90.0)
         self.anim_lat_min_spin = ttk.Spinbox(anim_lat_frame, from_=-90.0, to=90.0, increment=0.1,
-                                           textvariable=self.anim_lat_min_var, width=10, format="%.3f")
+                                           textvariable=self.anim_lat_min_var, width=8, format="%.1f")
         self.anim_lat_min_spin.pack(side="left", padx=2)
         
         ttk.Label(anim_lat_frame, text="Max:").pack(side="left", padx=(10, 2))
         self.anim_lat_max_var = tk.DoubleVar(value=90.0)
         self.anim_lat_max_spin = ttk.Spinbox(anim_lat_frame, from_=-90.0, to=90.0, increment=0.1,
-                                           textvariable=self.anim_lat_max_var, width=10, format="%.3f")
+                                           textvariable=self.anim_lat_max_var, width=8, format="%.1f")
         self.anim_lat_max_spin.pack(side="left", padx=2)
         
         # Longitude range
@@ -474,29 +491,28 @@ class RightPanel:
         ttk.Label(anim_lon_frame, text="Min:").pack(side="left", padx=(10, 2))
         self.anim_lon_min_var = tk.DoubleVar(value=-180.0)
         self.anim_lon_min_spin = ttk.Spinbox(anim_lon_frame, from_=-180.0, to=180.0, increment=0.1,
-                                           textvariable=self.anim_lon_min_var, width=10, format="%.3f")
+                                           textvariable=self.anim_lon_min_var, width=8, format="%.1f")
         self.anim_lon_min_spin.pack(side="left", padx=2)
         
         ttk.Label(anim_lon_frame, text="Max:").pack(side="left", padx=(10, 2))
         self.anim_lon_max_var = tk.DoubleVar(value=180.0)
         self.anim_lon_max_spin = ttk.Spinbox(anim_lon_frame, from_=-180.0, to=180.0, increment=0.1,
-                                           textvariable=self.anim_lon_max_var, width=10, format="%.3f")
+                                           textvariable=self.anim_lon_max_var, width=8, format="%.1f")
         self.anim_lon_max_spin.pack(side="left", padx=2)
         
-        # Playback controls frame
-        playback_frame = ttk.LabelFrame(control_frame, text="Playback Controls")
-        playback_frame.pack(fill="x", padx=5, pady=5)
-        
-        # Playback controls frame
-        playback_row1 = ttk.Frame(playback_frame)
-        playback_row1.pack(fill="x", padx=5, pady=2)
+        # Playback controls frame (right section)
+        playback_frame = ttk.LabelFrame(controls_container, text="Playback Controls")
+        playback_frame.pack(side="left", fill="y", padx=5)
         
         # Animation state variables
         self.anim_playing = tk.BooleanVar(value=False)
         self.anim_current_frame = tk.IntVar(value=0)
         self.anim_speed = tk.DoubleVar(value=1.0)
         
-        # Playback control buttons
+        # First row - main playback controls
+        playback_row1 = ttk.Frame(playback_frame)
+        playback_row1.pack(fill="x", padx=5, pady=2)
+        
         self.play_btn = ttk.Button(playback_row1, text="Play", 
                                   command=self._animation_play, state="disabled")
         self.play_btn.pack(side="left", padx=2)
@@ -518,20 +534,27 @@ class RightPanel:
         ttk.Button(playback_row2, text=">>", 
                   command=self._animation_step_forward, state="disabled").pack(side="left", padx=2)
         
-        ttk.Label(playback_row2, text="Speed:").pack(side="left", padx=(10, 2))
-        self.speed_scale = ttk.Scale(playback_row2, from_=0.1, to=5.0, 
-                                    variable=self.anim_speed, orient="horizontal", length=100)
+        # Third row - speed control
+        playback_row3 = ttk.Frame(playback_frame)
+        playback_row3.pack(fill="x", padx=5, pady=2)
+        
+        ttk.Label(playback_row3, text="Speed:").pack(side="left")
+        self.speed_scale = ttk.Scale(playback_row3, from_=0.1, to=5.0, 
+                                    variable=self.anim_speed, orient="horizontal", length=80)
         self.speed_scale.pack(side="left", padx=2)
         
-        self.speed_label = ttk.Label(playback_row2, text="1.0x")
+        self.speed_label = ttk.Label(playback_row3, text="1.0x")
         self.speed_label.pack(side="left", padx=2)
+        
+        # Fourth row - reset button
+        playback_row4 = ttk.Frame(playback_frame)
+        playback_row4.pack(fill="x", padx=5, pady=2)
+        
+        ttk.Button(playback_row4, text="Reset Range", 
+                  command=self._reset_animation_range).pack(padx=5)
         
         # Bind speed change
         self.anim_speed.trace('w', self._on_speed_changed)
-        
-        # Reset button
-        ttk.Button(playback_row2, text="Reset Range", 
-                  command=self._reset_animation_range).pack(side="right", padx=5)
         
         # Create matplotlib canvas
         canvas_frame = ttk.Frame(animation_frame)
@@ -581,17 +604,21 @@ class RightPanel:
                 ((focus_info.tracks_df is not None and not focus_info.tracks_df.empty) or
                  (focus_info.truth_df is not None and not focus_info.truth_df.empty))):
                 
-                # Get plot configuration from UI (use defaults if UI controls not available)
+                # Get plot configuration from UI enhanced controls
                 config = {
-                    'include_tracks': getattr(self, 'include_tracks_var', tk.BooleanVar(value=True)).get(),
-                    'include_truth': getattr(self, 'include_truth_var', tk.BooleanVar(value=True)).get()
+                    'tracks_selection': getattr(self, 'geo_tracks_var', tk.StringVar(value="all")).get(),
+                    'truth_selection': getattr(self, 'geo_truth_var', tk.StringVar(value="all")).get(),
+                    'lat_range': (getattr(self, 'geo_lat_min_var', tk.DoubleVar(value=-90.0)).get(),
+                                 getattr(self, 'geo_lat_max_var', tk.DoubleVar(value=90.0)).get()),
+                    'lon_range': (getattr(self, 'geo_lon_min_var', tk.DoubleVar(value=-180.0)).get(),
+                                 getattr(self, 'geo_lon_max_var', tk.DoubleVar(value=180.0)).get())
                 }
                 
                 plot_data = self.plot_manager.prepare_plot_data('lat_lon_scatter', app_state, config)
                 
                 if 'error' not in plot_data and 'geospatial' in self.canvas_widgets:
                     canvas = self.canvas_widgets['geospatial']
-                    canvas.create_simple_plot({'lat_lon_data': plot_data['lat_lon_data']})
+                    canvas.create_simple_plot(plot_data)
                     self.logger.debug(f"Auto-updated geospatial plot for dataset: {focus_info.name}")
             
         except Exception as e:
@@ -646,7 +673,7 @@ class RightPanel:
                     'tracks_selection': getattr(self, 'rms_tracks_var', tk.StringVar(value="all")).get()
                 }
                 
-                plot_data = self.plot_manager.prepare_plot_data('three_d_error', app_state, config)
+                plot_data = self.plot_manager.prepare_plot_data('rms_error_3d', app_state, config)
                 
                 if 'error' not in plot_data and 'rms_error' in self.canvas_widgets:
                     self.canvas_widgets['rms_error'].create_simple_plot(plot_data)
@@ -669,7 +696,7 @@ class RightPanel:
                 focus_info.status.value == "loaded" and 
                 focus_info.tracks_df is not None and not focus_info.tracks_df.empty):
                 
-                plot_data = self.plot_manager.prepare_plot_data('lifetime', app_state, {})
+                plot_data = self.plot_manager.prepare_plot_data('track_truth_lifetime', app_state, {})
                 
                 if 'error' not in plot_data and 'lifetime' in self.canvas_widgets:
                     self.canvas_widgets['lifetime'].create_simple_plot(plot_data)
@@ -731,7 +758,7 @@ class RightPanel:
                 focus_info.status.value == "loaded" and 
                 focus_info.tracks_df is not None and not focus_info.tracks_df.empty):
                 
-                plot_data = self.plot_manager.prepare_plot_data('visualization', app_state, {})
+                plot_data = self.plot_manager.prepare_plot_data('track_counts', app_state, {})
                 
                 if 'error' not in plot_data and 'visualization' in self.canvas_widgets:
                     self.canvas_widgets['visualization'].create_simple_plot(plot_data)

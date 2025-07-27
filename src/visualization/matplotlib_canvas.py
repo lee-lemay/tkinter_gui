@@ -79,22 +79,6 @@ class MatplotlibCanvas:
         # Add separator
         separator = ttk.Separator(self.toolbar_frame, orient='vertical')
         separator.pack(side=tk.LEFT, padx=5, fill=tk.Y)
-        
-        # Export button
-        export_btn = ttk.Button(
-            self.toolbar_frame,
-            text="Export Plot",
-            command=self.export_plot
-        )
-        export_btn.pack(side=tk.LEFT, padx=5)
-        
-        # Clear button
-        clear_btn = ttk.Button(
-            self.toolbar_frame,
-            text="Clear",
-            command=self.clear_plot
-        )
-        clear_btn.pack(side=tk.LEFT, padx=5)
     
     def get_frame(self) -> ttk.Frame:
         """Get the main frame containing the canvas."""
@@ -309,7 +293,7 @@ class MatplotlibCanvas:
         ax.axhline(y=0, color='k', linestyle='--', alpha=0.5)
     
     def _plot_rms_error_3d(self, ax, data: Dict[str, Any], config: Dict[str, Any]):
-        """Plot 3D RMS error data."""
+        """Plot 3D RMS error data with time on X-axis and error on Y-axis."""
         rms_data = data['rms_data']
         
         if not rms_data['rms_error']:
@@ -318,21 +302,35 @@ class MatplotlibCanvas:
                    transform=ax.transAxes, fontsize=12, color='gray')
             return
         
-        # Create scatter plot with RMS error as color
-        scatter = ax.scatter(rms_data['y_pos'], rms_data['x_pos'], 
-                           c=rms_data['rms_error'], cmap='viridis', 
-                           s=60, alpha=0.7, edgecolors='black', linewidth=0.5)
+        # Convert timestamps to relative time (seconds from start)
+        import numpy as np
+        import pandas as pd
         
-        # Add colorbar
-        cbar = self.figure.colorbar(scatter, ax=ax)
-        cbar.set_label('RMS Error (meters)', fontsize=10)
+        timestamps = pd.to_datetime(rms_data['timestamps'])
+        start_time = timestamps.min()
+        relative_times = [(t - start_time).total_seconds() for t in timestamps]
+        
+        # Create line plot with time on X-axis and RMS error on Y-axis
+        ax.plot(relative_times, rms_data['rms_error'], 
+                'o-', color='blue', linewidth=2, markersize=4, alpha=0.7)
+        
+        # Add trend line if there are enough points
+        if len(relative_times) > 1:
+            z = np.polyfit(relative_times, rms_data['rms_error'], 1)
+            p = np.poly1d(z)
+            ax.plot(relative_times, p(relative_times), 
+                   '--', color='red', alpha=0.8, linewidth=1, label='Trend')
+            ax.legend()
         
         # Styling
-        ax.set_title('3D RMS Position Error', fontsize=14, fontweight='bold')
-        ax.set_xlabel('Longitude', fontsize=12)
-        ax.set_ylabel('Latitude', fontsize=12)
+        ax.set_title('3D RMS Position Error vs Time', fontsize=14, fontweight='bold')
+        ax.set_xlabel('Time (seconds)', fontsize=12)
+        ax.set_ylabel('RMS Error (meters)', fontsize=12)
         ax.grid(True, alpha=0.3)
-        ax.set_aspect('equal', adjustable='box')
+        
+        # Format y-axis to show error values nicely
+        from matplotlib.ticker import FuncFormatter
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x:.2f}'))
     
     def _plot_lifetime(self, ax, data: Dict[str, Any], config: Dict[str, Any]):
         """Plot track/truth lifetime data."""
