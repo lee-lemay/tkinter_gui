@@ -81,8 +81,8 @@ class LeftPanel:
         list_frame = ttk.Frame(overview_frame)
         list_frame.pack(fill="both", expand=True)
         
-        # Create treeview for datasets
-        columns = ("Status", "Type", "Size")
+        # Create treeview for datasets with detailed columns
+        columns = ("Loaded", "Date", "Size MB", "PKL", "Truth", "Detections", "Tracks")
         self.dataset_tree = ttk.Treeview(
             list_frame,
             columns=columns,
@@ -90,18 +90,25 @@ class LeftPanel:
             height=8
         )
         
-        # Configure columns
+        # Configure columns with appropriate widths
         self.dataset_tree.heading("#0", text="Dataset Name")
-        self.dataset_tree.column("#0", width=120, anchor="w")
+        self.dataset_tree.column("#0", width=140, anchor="w")
+        
+        # Column configurations with optimal widths for visibility
+        column_configs = {
+            "Loaded": {"width": 60, "anchor": "center"},
+            "Date": {"width": 80, "anchor": "center"},
+            "Size MB": {"width": 65, "anchor": "e"},
+            "PKL": {"width": 40, "anchor": "center"},
+            "Truth": {"width": 50, "anchor": "center"},
+            "Detections": {"width": 75, "anchor": "center"},
+            "Tracks": {"width": 55, "anchor": "center"}
+        }
         
         for col in columns:
             self.dataset_tree.heading(col, text=col)
-            if col == "Status":
-                self.dataset_tree.column(col, width=60, anchor="center")
-            elif col == "Type":
-                self.dataset_tree.column(col, width=80, anchor="center")
-            else:  # Size
-                self.dataset_tree.column(col, width=60, anchor="e")
+            config = column_configs[col]
+            self.dataset_tree.column(col, width=config["width"], anchor=config["anchor"])
         
         # Scrollbar for treeview
         tree_scroll = ttk.Scrollbar(list_frame, orient="vertical", command=self.dataset_tree.yview)
@@ -330,37 +337,85 @@ class LeftPanel:
         for item in self.dataset_tree.get_children():
             self.dataset_tree.delete(item)
         
-        # Add datasets
+        # Add datasets with detailed information
         for name, dataset_info in datasets.items():
-            # Determine status display
-            status = "●" if hasattr(dataset_info, 'status') else "○"
+            # Loaded status (green check or red X) based on DatasetStatus
+            from src.models.application_state import DatasetStatus
+            loaded_status = "✓" if dataset_info.status == DatasetStatus.LOADED else "✗"
             
-            # Determine type
-            types = []
-            if hasattr(dataset_info, 'has_truth') and dataset_info.has_truth:
-                types.append("T")
-            if hasattr(dataset_info, 'has_detections') and dataset_info.has_detections:
-                types.append("D")
-            if hasattr(dataset_info, 'has_tracks') and dataset_info.has_tracks:
-                types.append("Tr")
-            type_str = "/".join(types) if types else "-"
+            # Date (formatted for display)
+            date_str = "-"
+            if hasattr(dataset_info, 'last_modified') and dataset_info.last_modified:
+                # Format date to show just MM/DD/YY if it's a full timestamp
+                try:
+                    from datetime import datetime
+                    if isinstance(dataset_info.last_modified, str):
+                        # Try to parse common date formats
+                        for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%m/%d/%Y"]:
+                            try:
+                                dt = datetime.strptime(dataset_info.last_modified, fmt)
+                                date_str = dt.strftime("%m/%d/%y")
+                                break
+                            except ValueError:
+                                continue
+                        if date_str == "-":
+                            # If parsing fails, use first 8 characters
+                            date_str = dataset_info.last_modified[:8]
+                    else:
+                        date_str = str(dataset_info.last_modified)[:8]
+                except:
+                    date_str = "-"
             
-            # Format size
-            size_str = "-"
-            if hasattr(dataset_info, 'size_bytes') and dataset_info.size_bytes > 0:
-                if dataset_info.size_bytes > 1024 * 1024:
-                    size_str = f"{dataset_info.size_bytes / (1024 * 1024):.1f}MB"
-                elif dataset_info.size_bytes > 1024:
-                    size_str = f"{dataset_info.size_bytes / 1024:.1f}KB"
+            # Size in MB (formatted to 1 decimal place)
+            size_mb_str = "-"
+            if hasattr(dataset_info, 'size_bytes') and dataset_info.size_bytes and dataset_info.size_bytes > 0:
+                size_mb = dataset_info.size_bytes / (1024 * 1024)
+                if size_mb >= 100:
+                    size_mb_str = f"{size_mb:.0f}"
+                elif size_mb >= 10:
+                    size_mb_str = f"{size_mb:.1f}"
                 else:
-                    size_str = f"{dataset_info.size_bytes}B"
+                    size_mb_str = f"{size_mb:.2f}"
             
-            # Insert item
+            # PKL file existence (green check or red X)
+            pkl_status = "✓" if hasattr(dataset_info, 'has_pkl') and dataset_info.has_pkl else "✗"
+            
+            # Truth data indicator (count or check mark)
+            truth_str = "-"
+            if hasattr(dataset_info, 'truth_count') and dataset_info.truth_count is not None:
+                if dataset_info.truth_count > 0:
+                    truth_str = str(dataset_info.truth_count)
+                else:
+                    truth_str = "0"
+            elif hasattr(dataset_info, 'has_truth') and dataset_info.has_truth:
+                truth_str = "✓"
+            
+            # Detections indicator (count or check mark)
+            detections_str = "-"
+            if hasattr(dataset_info, 'detections_count') and dataset_info.detections_count is not None:
+                if dataset_info.detections_count > 0:
+                    detections_str = str(dataset_info.detections_count)
+                else:
+                    detections_str = "0"
+            elif hasattr(dataset_info, 'has_detections') and dataset_info.has_detections:
+                detections_str = "✓"
+            
+            # Tracks indicator (count or check mark)
+            tracks_str = "-"
+            if hasattr(dataset_info, 'tracks_count') and dataset_info.tracks_count is not None:
+                if dataset_info.tracks_count > 0:
+                    tracks_str = str(dataset_info.tracks_count)
+                else:
+                    tracks_str = "0"
+            elif hasattr(dataset_info, 'has_tracks') and dataset_info.has_tracks:
+                tracks_str = "✓"
+            
+            # Insert item with all detailed information
             self.dataset_tree.insert(
                 "",
                 "end",
                 text=name,
-                values=(status, type_str, size_str)
+                values=(loaded_status, date_str, size_mb_str, pkl_status, truth_str, detections_str, tracks_str)
             )
     
     def _update_focus_info(self, dataset_info):

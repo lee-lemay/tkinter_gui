@@ -230,7 +230,7 @@ dataset_directory/
 - Left/right panel layout with placeholder content
 - Basic navigation between panels
 
-### 10.2 Phase 3: Placeholder Data Generation
+### 10.2 Phase 2: Placeholder Data Generation
 - Create two placeholder datasets
 - Each contains placeholder tracks, truths, and detections in CSV format
 

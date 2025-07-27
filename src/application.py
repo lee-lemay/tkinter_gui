@@ -64,8 +64,14 @@ class DataAnalysisApp:
             self.logger.error(f"Failed to initialize application components: {e}")
             raise
     
-    def run(self):
-        """Start the application main loop."""
+    def run(self, demo_mode=False, demo_duration=None):
+        """
+        Start the application main loop.
+        
+        Args:
+            demo_mode: If True, run in demo mode with automatic shutdown
+            demo_duration: Duration in seconds for demo mode (default 10)
+        """
         if not self.root:
             raise RuntimeError("Application not properly initialized")
         
@@ -76,6 +82,12 @@ class DataAnalysisApp:
             self.root.title("Data Analysis Application")
             self.root.geometry("1200x800")
             self.root.minsize(800, 600)
+            
+            # If demo mode, schedule automatic shutdown
+            if demo_mode:
+                duration = demo_duration or 10
+                self.logger.info(f"Running in demo mode for {duration} seconds")
+                self.root.after(duration * 1000, self.shutdown)
             
             # Start the tkinter main loop
             self.root.mainloop()

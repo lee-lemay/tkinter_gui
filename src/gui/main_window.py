@@ -10,6 +10,8 @@ from tkinter import ttk, messagebox
 import logging
 from typing import Optional, Any
 
+from matplotlib import style
+
 from ..components.menu_bar import MenuBar
 from ..components.status_bar import StatusBar
 from ..components.left_panel import LeftPanel
@@ -97,6 +99,12 @@ class MainWindow:
         # Main frame that contains everything
         self.main_frame = ttk.Frame(self.root)
         self.main_frame.grid(row=0, column=0, sticky="nsew", padx=2, pady=2)
+
+        # Style:
+        style = ttk.Style()
+        style.theme_use('clam')   # <— this theme shows the sash handle
+        style.configure('Sash', sashthickness=6, gripcount=300)
+
         
         # Configure main frame grid
         self.main_frame.grid_rowconfigure(1, weight=1)  # Content area
@@ -110,13 +118,19 @@ class MainWindow:
         self.content_frame.grid_rowconfigure(0, weight=1)
         self.content_frame.grid_columnconfigure(0, weight=1)
         
-        # Panels frame (contains left and right panels)
-        self.panels_frame = ttk.Frame(self.content_frame)
-        self.panels_frame.grid(row=0, column=0, sticky="nsew")
+        # Create a paned window for resizable panels with divider
+        self.paned_window = ttk.PanedWindow(self.content_frame, 
+                                            orient="horizontal"
+
+                                            # sashwidth=8,  # Increase sash width from default 3px to 8px
+                                            # sashrelief=tk.RAISED,  # Add raised relief for 3D effect
+                                            # sashpad=2  # Add padding around the sash
+        )
+        self.paned_window.grid(row=0, column=0, sticky="nsew")
         
-        # Configure panels frame grid
-        self.panels_frame.grid_rowconfigure(0, weight=1)
-        self.panels_frame.grid_columnconfigure(1, weight=1)  # Right panel gets more space
+        # Configure content frame grid
+        self.content_frame.grid_rowconfigure(0, weight=1)
+        self.content_frame.grid_columnconfigure(0, weight=1)
     
     def _create_components(self):
         """Create all GUI components."""
@@ -130,12 +144,12 @@ class MainWindow:
             self.status_bar.frame.grid(row=2, column=0, sticky="ew")
             
             # Create left panel
-            self.left_panel = LeftPanel(self.panels_frame)
-            self.left_panel.frame.grid(row=0, column=0, sticky="nsew", padx=(0, 2))
+            self.left_panel = LeftPanel(self.paned_window)
+            self.paned_window.add(self.left_panel.frame, weight=1)
             
             # Create right panel
-            self.right_panel = RightPanel(self.panels_frame)
-            self.right_panel.frame.grid(row=0, column=1, sticky="nsew")
+            self.right_panel = RightPanel(self.paned_window)
+            self.paned_window.add(self.right_panel.frame, weight=3)  # Right panel gets more space initially
             
             self.logger.debug("All GUI components created")
             
@@ -167,15 +181,17 @@ class MainWindow:
         Args:
             visible: Whether the left panel should be visible
         """
-        if visible != self.left_panel_visible:
+        if visible != self.left_panel_visible and self.left_panel:
             self.left_panel_visible = visible
             
             if visible:
-                self.left_panel.frame.grid()
-                self.panels_frame.grid_columnconfigure(0, weight=0, minsize=300)
+                # Re-add the left panel to the paned window
+                if self.left_panel.frame not in self.paned_window.panes():
+                    self.paned_window.insert(0, self.left_panel.frame, weight=1)
             else:
-                self.left_panel.frame.grid_remove()
-                self.panels_frame.grid_columnconfigure(0, weight=0, minsize=0)
+                # Remove the left panel from the paned window
+                if self.left_panel.frame in self.paned_window.panes():
+                    self.paned_window.remove(self.left_panel.frame)
             
             self.logger.debug(f"Left panel visibility: {visible}")
     
@@ -186,13 +202,17 @@ class MainWindow:
         Args:
             visible: Whether the right panel should be visible
         """
-        if visible != self.right_panel_visible:
+        if visible != self.right_panel_visible and self.right_panel:
             self.right_panel_visible = visible
             
             if visible:
-                self.right_panel.frame.grid()
+                # Re-add the right panel to the paned window
+                if self.right_panel.frame not in self.paned_window.panes():
+                    self.paned_window.add(self.right_panel.frame, weight=3)
             else:
-                self.right_panel.frame.grid_remove()
+                # Remove the right panel from the paned window
+                if self.right_panel.frame in self.paned_window.panes():
+                    self.paned_window.remove(self.right_panel.frame)
             
             self.logger.debug(f"Right panel visibility: {visible}")
     
