@@ -245,7 +245,7 @@ dataset_directory/
 - Extensible, modular software design practice for reusable components
 - Matplotlib canvas integration
 - NavigationToolbar2Tk setup
-- First simple plot 
+- First simple plot showing lat/lon of tracks and truth
 - Plot export functionality
 - Tab-based view selection framework
 
@@ -256,7 +256,7 @@ dataset_directory/
 - Extensible, modular software design practice for reusable components
 - Matplotlib canvas integration
 - NavigationToolbar2Tk setup
-- First simple plot 
+- First simple plot showing lat/lon of tracks and truth
 - Plot export functionality
 - Tab-based view selection framework
 
