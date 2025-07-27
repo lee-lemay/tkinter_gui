@@ -81,18 +81,24 @@ class RightPanel:
         self._create_tabs()
     
     def _create_tabs(self):
-        """Create the analysis view tabs with matplotlib integration."""
+        """Create the analysis view tabs with matplotlib integration for Phase 5."""
         # Overview Tab (with basic plot)
         self._create_overview_tab()
         
         # Visualization Tab (main plotting area)
         self._create_visualization_tab()
         
-        # Statistics Tab (with statistical plots)
+        # Statistics Tab (with statistical plots) 
         self._create_statistics_tab()
         
         # Geospatial Tab (for lat/lon plots)
         self._create_geospatial_tab()
+        
+        # Phase 5 tabs - New matplotlib plots
+        self._create_error_analysis_tab()
+        self._create_rms_error_tab()
+        self._create_lifetime_tab()
+        self._create_animation_tab()
     
     def _create_overview_tab(self):
         """Create the overview tab with demo plot."""
@@ -106,7 +112,7 @@ class RightPanel:
         # Welcome message
         welcome_label = ttk.Label(
             header_frame,
-            text="Data Analysis Application - Phase 4",
+            text="Data Analysis Application - Phase 5",
             font=("TkDefaultFont", 12, "bold")
         )
         welcome_label.pack(anchor="w")
@@ -114,7 +120,7 @@ class RightPanel:
         # Feature description
         feature_label = ttk.Label(
             header_frame,
-            text="Matplotlib visualization capabilities enabled",
+            text="Extended matplotlib visualization capabilities - All Phase 5 plots enabled",
             font=("TkDefaultFont", 10, "italic")
         )
         feature_label.pack(anchor="w", pady=(5, 0))
@@ -254,6 +260,145 @@ class RightPanel:
         self.canvas_widgets['geospatial'] = MatplotlibCanvas(canvas_frame)
         self.canvas_widgets['geospatial'].frame.pack(fill="both", expand=True)
     
+    def _create_error_analysis_tab(self):
+        """Create the North/East error analysis tab."""
+        error_frame = ttk.Frame(self.notebook)
+        self.notebook.add(error_frame, text="Error Analysis")
+        
+        # Control panel
+        control_frame = ttk.LabelFrame(error_frame, text="Error Analysis Controls")
+        control_frame.pack(fill="x", padx=10, pady=10)
+        
+        # Show error plot button
+        self.error_btn = ttk.Button(
+            control_frame,
+            text="Show North/East Errors",
+            command=self._show_north_east_error_plot
+        )
+        self.error_btn.pack(side="left", padx=5, pady=5)
+        
+        # Create matplotlib canvas
+        canvas_frame = ttk.Frame(error_frame)
+        canvas_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        self.canvas_widgets['error_analysis'] = MatplotlibCanvas(canvas_frame)
+        self.canvas_widgets['error_analysis'].frame.pack(fill="both", expand=True)
+    
+    def _create_rms_error_tab(self):
+        """Create the 3D RMS error tab."""
+        rms_frame = ttk.Frame(self.notebook)
+        self.notebook.add(rms_frame, text="RMS Error")
+        
+        # Control panel
+        control_frame = ttk.LabelFrame(rms_frame, text="RMS Error Controls")
+        control_frame.pack(fill="x", padx=10, pady=10)
+        
+        # Show RMS error plot button
+        self.rms_btn = ttk.Button(
+            control_frame,
+            text="Show 3D RMS Errors",
+            command=self._show_rms_error_plot
+        )
+        self.rms_btn.pack(side="left", padx=5, pady=5)
+        
+        # Create matplotlib canvas
+        canvas_frame = ttk.Frame(rms_frame)
+        canvas_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        self.canvas_widgets['rms_error'] = MatplotlibCanvas(canvas_frame)
+        self.canvas_widgets['rms_error'].frame.pack(fill="both", expand=True)
+    
+    def _create_lifetime_tab(self):
+        """Create the track/truth lifetime tab."""
+        lifetime_frame = ttk.Frame(self.notebook)
+        self.notebook.add(lifetime_frame, text="Lifetime")
+        
+        # Control panel
+        control_frame = ttk.LabelFrame(lifetime_frame, text="Lifetime Controls")
+        control_frame.pack(fill="x", padx=10, pady=10)
+        
+        # Show lifetime plot button
+        self.lifetime_btn = ttk.Button(
+            control_frame,
+            text="Show Lifetimes",
+            command=self._show_lifetime_plot
+        )
+        self.lifetime_btn.pack(side="left", padx=5, pady=5)
+        
+        # Options frame
+        options_frame = ttk.Frame(control_frame)
+        options_frame.pack(side="left", padx=10)
+        
+        self.lifetime_tracks_var = tk.BooleanVar(value=True)
+        self.lifetime_truth_var = tk.BooleanVar(value=False)
+        
+        tracks_cb = ttk.Checkbutton(
+            options_frame,
+            text="Include Tracks",
+            variable=self.lifetime_tracks_var
+        )
+        tracks_cb.pack(side="left", padx=5)
+        
+        truth_cb = ttk.Checkbutton(
+            options_frame,
+            text="Include Truth",
+            variable=self.lifetime_truth_var
+        )
+        truth_cb.pack(side="left", padx=5)
+        
+        # Create matplotlib canvas
+        canvas_frame = ttk.Frame(lifetime_frame)
+        canvas_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        self.canvas_widgets['lifetime'] = MatplotlibCanvas(canvas_frame)
+        self.canvas_widgets['lifetime'].frame.pack(fill="both", expand=True)
+    
+    def _create_animation_tab(self):
+        """Create the animation tab."""
+        animation_frame = ttk.Frame(self.notebook)
+        self.notebook.add(animation_frame, text="Animation")
+        
+        # Control panel
+        control_frame = ttk.LabelFrame(animation_frame, text="Animation Controls")
+        control_frame.pack(fill="x", padx=10, pady=10)
+        
+        # Show animation plot button
+        self.animation_btn = ttk.Button(
+            control_frame,
+            text="Show Animation",
+            command=self._show_animation_plot
+        )
+        self.animation_btn.pack(side="left", padx=5, pady=5)
+        
+        # Options frame
+        options_frame = ttk.Frame(control_frame)
+        options_frame.pack(side="left", padx=10)
+        
+        self.animation_tracks_var = tk.BooleanVar(value=True)
+        self.animation_truth_var = tk.BooleanVar(value=True)
+        
+        tracks_cb = ttk.Checkbutton(
+            options_frame,
+            text="Include Tracks",
+            variable=self.animation_tracks_var
+        )
+        tracks_cb.pack(side="left", padx=5)
+        
+        truth_cb = ttk.Checkbutton(
+            options_frame,
+            text="Include Truth",
+            variable=self.animation_truth_var
+        )
+        truth_cb.pack(side="left", padx=5)
+        
+        # Create matplotlib canvas
+        canvas_frame = ttk.Frame(animation_frame)
+        canvas_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        self.canvas_widgets['animation'] = MatplotlibCanvas(canvas_frame)
+        self.canvas_widgets['animation'].frame.pack(fill="both", expand=True)
+    
+    
     def _create_demo_plot(self):
         """Create a demo plot for the overview tab."""
         if 'overview' in self.canvas_widgets:
@@ -332,6 +477,14 @@ class RightPanel:
                 canvas.create_simple_plot({'track_counts': plot_data['track_counts']})
             elif plot_id == 'lat_lon_scatter':
                 canvas.create_simple_plot({'lat_lon_data': plot_data['lat_lon_data']})
+            elif plot_id == 'north_east_error':
+                canvas.create_simple_plot({'error_data': plot_data['error_data']})
+            elif plot_id == 'rms_error_3d':
+                canvas.create_simple_plot({'rms_data': plot_data['rms_data']})
+            elif plot_id == 'track_truth_lifetime':
+                canvas.create_simple_plot({'lifetime_data': plot_data['lifetime_data']})
+            elif plot_id == 'lat_lon_animation':
+                canvas.create_simple_plot({'animation_data': plot_data['animation_data']})
             elif plot_id == 'demo_plot':
                 canvas.create_simple_plot({})
             
@@ -409,6 +562,84 @@ class RightPanel:
             
         except Exception as e:
             self.logger.error(f"Error auto-updating geospatial plot: {e}")
+    
+    def _show_north_east_error_plot(self):
+        """Show North/East error plot in the error analysis tab."""
+        if not self.plot_manager or not self.controller:
+            return
+        
+        try:
+            app_state = self.controller.get_state()
+            plot_data = self.plot_manager.prepare_plot_data('north_east_error', app_state)
+            
+            if 'error' not in plot_data:
+                canvas = self.canvas_widgets['error_analysis']
+                canvas.create_simple_plot({'error_data': plot_data['error_data']})
+            
+        except Exception as e:
+            self.logger.error(f"Error showing North/East error plot: {e}")
+    
+    def _show_rms_error_plot(self):
+        """Show 3D RMS error plot in the RMS error tab."""
+        if not self.plot_manager or not self.controller:
+            return
+        
+        try:
+            app_state = self.controller.get_state()
+            plot_data = self.plot_manager.prepare_plot_data('rms_error_3d', app_state)
+            
+            if 'error' not in plot_data:
+                canvas = self.canvas_widgets['rms_error']
+                canvas.create_simple_plot({'rms_data': plot_data['rms_data']})
+            
+        except Exception as e:
+            self.logger.error(f"Error showing RMS error plot: {e}")
+    
+    def _show_lifetime_plot(self):
+        """Show lifetime plot in the lifetime tab."""
+        if not self.plot_manager or not self.controller:
+            return
+        
+        try:
+            app_state = self.controller.get_state()
+            
+            # Get plot configuration from UI
+            config = {
+                'include_tracks': self.lifetime_tracks_var.get(),
+                'include_truth': self.lifetime_truth_var.get()
+            }
+            
+            plot_data = self.plot_manager.prepare_plot_data('track_truth_lifetime', app_state, config)
+            
+            if 'error' not in plot_data:
+                canvas = self.canvas_widgets['lifetime']
+                canvas.create_simple_plot({'lifetime_data': plot_data['lifetime_data']})
+            
+        except Exception as e:
+            self.logger.error(f"Error showing lifetime plot: {e}")
+    
+    def _show_animation_plot(self):
+        """Show animation plot in the animation tab."""
+        if not self.plot_manager or not self.controller:
+            return
+        
+        try:
+            app_state = self.controller.get_state()
+            
+            # Get plot configuration from UI
+            config = {
+                'include_tracks': self.animation_tracks_var.get(),
+                'include_truth': self.animation_truth_var.get()
+            }
+            
+            plot_data = self.plot_manager.prepare_plot_data('lat_lon_animation', app_state, config)
+            
+            if 'error' not in plot_data:
+                canvas = self.canvas_widgets['animation']
+                canvas.create_simple_plot({'animation_data': plot_data['animation_data']})
+            
+        except Exception as e:
+            self.logger.error(f"Error showing animation plot: {e}")
     
     def _on_tab_changed(self, event):
         """Handle tab change events."""

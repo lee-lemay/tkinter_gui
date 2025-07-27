@@ -139,6 +139,14 @@ class MatplotlibCanvas:
                 self._plot_track_counts(ax, data, plot_config)
             elif 'lat_lon_data' in data:
                 self._plot_lat_lon(ax, data, plot_config)
+            elif 'error_data' in data:
+                self._plot_north_east_error(ax, data, plot_config)
+            elif 'rms_data' in data:
+                self._plot_rms_error_3d(ax, data, plot_config)
+            elif 'lifetime_data' in data:
+                self._plot_lifetime(ax, data, plot_config)
+            elif 'animation_data' in data:
+                self._plot_animation(ax, data, plot_config)
             else:
                 # Default demo plot
                 self._plot_demo(ax)
@@ -273,6 +281,133 @@ class MatplotlibCanvas:
         ax.set_xticks([])
         ax.set_yticks([])
         self.canvas.draw()
+    
+    def _plot_north_east_error(self, ax, data: Dict[str, Any], config: Dict[str, Any]):
+        """Plot North/East error data."""
+        error_data = data['error_data']
+        
+        if not error_data['north_errors'] or not error_data['east_errors']:
+            ax.text(0.5, 0.5, 'No error data available',
+                   horizontalalignment='center', verticalalignment='center',
+                   transform=ax.transAxes, fontsize=12, color='gray')
+            return
+        
+        # Create time array for x-axis
+        timestamps = error_data['timestamps']
+        time_seconds = [(t - timestamps[0]).total_seconds() for t in timestamps]
+        
+        # Plot North and East errors
+        ax.plot(time_seconds, error_data['north_errors'], 'b-', label='North Error', linewidth=2)
+        ax.plot(time_seconds, error_data['east_errors'], 'r-', label='East Error', linewidth=2)
+        
+        # Styling
+        ax.set_title('North/East Position Errors', fontsize=14, fontweight='bold')
+        ax.set_xlabel('Time (seconds)', fontsize=12)
+        ax.set_ylabel('Error (meters)', fontsize=12)
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+        ax.axhline(y=0, color='k', linestyle='--', alpha=0.5)
+    
+    def _plot_rms_error_3d(self, ax, data: Dict[str, Any], config: Dict[str, Any]):
+        """Plot 3D RMS error data."""
+        rms_data = data['rms_data']
+        
+        if not rms_data['rms_error']:
+            ax.text(0.5, 0.5, 'No RMS error data available',
+                   horizontalalignment='center', verticalalignment='center',
+                   transform=ax.transAxes, fontsize=12, color='gray')
+            return
+        
+        # Create scatter plot with RMS error as color
+        scatter = ax.scatter(rms_data['y_pos'], rms_data['x_pos'], 
+                           c=rms_data['rms_error'], cmap='viridis', 
+                           s=60, alpha=0.7, edgecolors='black', linewidth=0.5)
+        
+        # Add colorbar
+        cbar = self.figure.colorbar(scatter, ax=ax)
+        cbar.set_label('RMS Error (meters)', fontsize=10)
+        
+        # Styling
+        ax.set_title('3D RMS Position Error', fontsize=14, fontweight='bold')
+        ax.set_xlabel('Longitude', fontsize=12)
+        ax.set_ylabel('Latitude', fontsize=12)
+        ax.grid(True, alpha=0.3)
+        ax.set_aspect('equal', adjustable='box')
+    
+    def _plot_lifetime(self, ax, data: Dict[str, Any], config: Dict[str, Any]):
+        """Plot track/truth lifetime data."""
+        lifetime_data = data['lifetime_data']
+        
+        if not lifetime_data['track_lifetimes'] and not lifetime_data['truth_lifetimes']:
+            ax.text(0.5, 0.5, 'No lifetime data available',
+                   horizontalalignment='center', verticalalignment='center',
+                   transform=ax.transAxes, fontsize=12, color='gray')
+            return
+        
+        # Prepare data for histogram
+        data_to_plot = []
+        labels = []
+        
+        if lifetime_data['track_lifetimes']:
+            data_to_plot.append(lifetime_data['track_lifetimes'])
+            labels.append('Tracks')
+        
+        if lifetime_data['truth_lifetimes']:
+            data_to_plot.append(lifetime_data['truth_lifetimes'])
+            labels.append('Truth')
+        
+        # Create histogram
+        ax.hist(data_to_plot, bins=20, alpha=0.7, label=labels, edgecolor='black')
+        
+        # Styling
+        ax.set_title('Track/Truth Lifetime Distribution', fontsize=14, fontweight='bold')
+        ax.set_xlabel('Lifetime (seconds)', fontsize=12)
+        ax.set_ylabel('Count', fontsize=12)
+        ax.grid(True, alpha=0.3)
+        if len(labels) > 1:
+            ax.legend()
+    
+    def _plot_animation(self, ax, data: Dict[str, Any], config: Dict[str, Any]):
+        """Plot animated lat/lon data (static frame for now)."""
+        animation_data = data['animation_data']
+        
+        if (len(animation_data['tracks']) == 0 and len(animation_data['truth']) == 0):
+            ax.text(0.5, 0.5, 'No animation data available',
+                   horizontalalignment='center', verticalalignment='center',
+                   transform=ax.transAxes, fontsize=12, color='gray')
+            return
+        
+        # For Phase 5, show static plot with trajectory paths
+        # (Animation controls will be added in enhanced version)
+        
+        # Plot track trajectories
+        if len(animation_data['tracks']) > 0:
+            tracks_df = animation_data['tracks']
+            for track_id in tracks_df['track_id'].unique():
+                track_data = tracks_df[tracks_df['track_id'] == track_id]
+                ax.plot(track_data['lon'], track_data['lat'], 
+                       'b-', alpha=0.6, linewidth=2, label='Track Trajectory' if track_id == tracks_df['track_id'].iloc[0] else "")
+                # Mark start and end points
+                ax.scatter(track_data['lon'].iloc[0], track_data['lat'].iloc[0], 
+                          c='green', s=100, marker='o', label='Start' if track_id == tracks_df['track_id'].iloc[0] else "")
+                ax.scatter(track_data['lon'].iloc[-1], track_data['lat'].iloc[-1], 
+                          c='red', s=100, marker='s', label='End' if track_id == tracks_df['track_id'].iloc[0] else "")
+        
+        # Plot truth trajectories
+        if len(animation_data['truth']) > 0:
+            truth_df = animation_data['truth']
+            for truth_id in truth_df['id'].unique():
+                truth_data = truth_df[truth_df['id'] == truth_id]
+                ax.plot(truth_data['lon'], truth_data['lat'], 
+                       'r--', alpha=0.6, linewidth=2, label='Truth Trajectory' if truth_id == truth_df['id'].iloc[0] else "")
+        
+        # Styling
+        ax.set_title('Trajectory Animation (Static View)', fontsize=14, fontweight='bold')
+        ax.set_xlabel('Longitude', fontsize=12)
+        ax.set_ylabel('Latitude', fontsize=12)
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+        ax.set_aspect('equal', adjustable='box')
     
     def export_plot(self):
         """Export the current plot to a file."""
