@@ -14,9 +14,9 @@ For now, the inital dataset will be a stand-in for real datasets, just to get th
 
 ### 2.1 Technology Stack
 - **Frontend**: Python tkinter
-- **Data Processing**: pandas
+- **Data Processing**: Pandas, performed by business logic
 - **Visualization**: matplotlib, plotly (for interactive plots)
-- **Schema Validation**: jsonschema or custom validation
+- **Schema Validation**: python dictionary based schemas
 - **File I/O**: Standard Python libraries
 
 ### 2.2 Application Structure
@@ -28,6 +28,18 @@ Main Application
 ├── Schema Validation
 └── File System Interface
 ```
+
+### 2.3 Business Logic Interface
+- **Data Loading Interface**: Abstract class defining methods for dataset operations
+- **Schema Validation Interface**: Methods for validating loaded data
+- **Analysis Interface**: Methods for computing statistics and derived data
+- **Mock Implementation**: Placeholder implementation for development phase
+
+# Example interface methods:
+# - load_dataset(dataset_path) -> Dict[str, DataFrame]
+# - validate_dataset(dataframes) -> ValidationResults
+# - get_dataset_summary(dataframes) -> SummaryStats
+# - compute_errors(tracks, truth) -> ErrorMetrics
 
 ## 3. Data Organization Requirements
 
@@ -54,11 +66,11 @@ dataset_directory/
 - **Track files**: Track/trajectory data
 
 ### 3.3 Data Loading Requirements
-- Support for multiple file formats (CSV, JSON, Parquet, etc.)
+- Support for CSV files containing placeholder data
 - Configurable dataset selection (none, some, or all)
-- Non-modal dataset selection interface
-- Automatic loading into pandas DataFrames
-- Schema validation post-loading
+- Dataset directory selection interface
+- Automatic loading into pandas DataFrames (for now loading placeholder data)
+- Schema validation post-loading (not necessary for the initial implementation)
 
 ## 4. User Interface Requirements
 
@@ -79,94 +91,104 @@ dataset_directory/
 
 ### 4.2 Left Panel Requirements
 - **Dataset Overview Section**:
-  - List of all loaded datasets
-  - Basic statistics for each dataset (row count, column count, file size)
-  - Data type indicators (truth/detections/tracks)
+  - scrollable list of all available datasets
+  - Basic info for each dataset (if its already loaded, its date, size, and whether or not .pkl files of processed data exists)
+  - Indicators for presence of: truth/detections/tracks
+  - A button to use .pkl files for already processed datasets if the .pkl file is available
+  - A button to process all selected datasets.
   
 - **Current Dataset Focus Section**:
   - Detailed information about selected dataset
-  - Column names and data types
-  - Data quality indicators
-  - Missing data statistics
+  - Name, date, duration, # tracks, detections, and truth measurements
+  - Jobs that can be done using this dataset (determined during validation).
+  - As datasets are loaded, this section displays what dataset is currently being loaded, how long it will take, and how many are left
+  - A field to set the association range
+  - A drop down to select the method
+  - A button to reprocess
   
 - **Dataset Selection Controls**:
-  - Dropdown or list for selecting current focus dataset
+  - Dropdown for selecting current focus dataset
   - Checkboxes for enabling/disabling datasets in analysis
   - Refresh/reload controls
 
 ### 4.3 Right Panel Requirements
-- **View Selection**: Tab-based or dropdown selection for different analysis views
+- **View Selection**: Tab-based selection for different analysis views. Some are unavailable depending on Jobs that can be done using this dataset (determined during validation).
 - **Interactive Plot Area**: Main display area for visualizations
 - **Control Panel**: Parameters and options for current view
+
+### 4.4 Menu Bar Requirements
+- **File Menu**: Open dataset directory, recent directories, exit
+- **View Menu**: Toggle panels, zoom controls, reset layout
+- **Tools Menu**: Export data, plot export, preferences
+- **Help Menu**: About, user guide, keyboard shortcuts
 
 ## 5. Analysis Views and Visualizations
 
 ### 5.1 Statistical Views
-- **Dataset Statistics**:
-  - Summary statistics (mean, median, std, min, max)
-  - Distribution plots (histograms, box plots)
-  - Correlation matrices
-  - Data quality reports
-
-### 5.2 Geospatial Views
-- **Geographic Plotting**:
-  - Latitude/longitude scatter plots
-  - Track trajectory overlays
-  - Truth vs detection comparisons
-  - Interactive map interface (if possible with tkinter/matplotlib)
-
-### 5.3 Temporal Views
-- **Time-based Analysis**:
-  - Time series plots
-  - Animation controls for tracks over time
-  - Truth vs track temporal alignment
-  - Playback controls (play, pause, step, speed)
-
-### 5.4 Custom Analysis Views
-- **User-Defined Plotting**:
-  - Field selection for X/Y axes
-  - Multiple plot types (scatter, line, bar, etc.)
-  - Filtering capabilities
-  - Color coding options
+- **5.1.1 Several sample Matplotlib interactive graphs, each with their own tabs**:
+  - Used as a basis for other matplotlib interactive graphs 
   - Export functionality
+  - Create different tabs for following:
+  -- Number of tracks for all selected datasets
+  --- Control Panel allows selection of all or some of datasets (default all)
+  -- Latitude, longitude plots for tracks and truth for current focus dataset
+  --- Control Panel allows selection of all or some of tracks, all or some of truths, allows max/min lat/lon to be selected
+  -- North/East error for current for the focus dataset
+  --- Control Panel allows selection of all or some of tracks
+  -- 3D RMS error for current for the focus dataset
+  --- Control Panel allows selection of all or some of tracks
+  -- Track/truth lifetime for the focus dataset
+  --- Control Panel allows selection of all/some/none of tracks (default all) and all/some/none of truth (default none)
+  -- Latitude, longitude animation plots for tracks and truth for current focus dataset
+  --- Control Panel allows selection of all or some of tracks, all or some of truths, allows max/min lat/lon to be selected
+  --- Playback controls (play, pause, step, speed)
 
-### 5.5 Comparison Views
-- **Multi-dataset Comparison**:
-  - Side-by-side statistics
-  - Overlay plots
-  - Performance metrics comparison
+- **5.1.2 Several sample plotly interactive graphs, each with their own tabs**:
+  - Used as a basis for other plotly interactive graphs 
+  - Mouseover tooltips for all data
+  - Export functionality
+  - Create different tabs for following:
+  -- Number of tracks for all selected datasets
+  --- Control Panel allows selection of all or some of datasets (default all)
+  -- Latitude, longitude plots for tracks and truth for current focus dataset
+  --- Control Panel allows selection of all or some of tracks, all or some of truths, allows max/min lat/lon to be selected
+  -- North/East error for current for the focus dataset
+  --- Control Panel allows selection of all or some of tracks
+  -- 3D RMS error for current for the focus dataset
+  --- Control Panel allows selection of all or some of tracks
+  -- Track/truth lifetime for the focus dataset
+  --- Control Panel allows selection of all/some/none of tracks (default all) and all/some/none of truth (default none)
+  -- Latitude, longitude animation plots for tracks and truth for current focus dataset
+  --- Control Panel allows selection of all or some of tracks, all or some of truths, allows max/min lat/lon to be selected
+  --- Playback controls (play, pause, step, speed)
+  -- User defined plots:
+  --- Field selection for X/Y axes
+  --- Multiple plot types (scatter, line, bar, etc.)
 
 ## 6. Data Management Requirements
 
 ### 6.1 Data Loading
 - **Directory Selection**: Browse and select dataset_directory
 - **Dataset Discovery**: Automatically scan for valid datasets
+- **Pickle file detection**: Automatically scan for presence of .pkl files indicating dataset has already been processed
 - **Selective Loading**: User choice of which datasets to load
-- **Progress Indication**: Loading progress for large datasets
+- **Progress Indication**: Loading progress for datasets
 - **Error Handling**: Graceful handling of corrupt or invalid files
 
 ### 6.2 Schema Validation
-- **Configurable Schemas**: Define expected schemas for each data type
-- **Validation Reporting**: Clear indication of validation results
-- **Flexible Validation**: Allow for variations in column names/types
-- **Schema Management**: Ability to update/modify validation schemas
+- **Configurable Schemas**: Handled by business logic
 
 ### 6.3 Data Processing
-- **Data Cleaning**: Handle missing values, outliers
-- **Data Transformation**: Unit conversions, coordinate transformations
-- **Derived Fields**: Calculate additional fields from existing data
-- **Filtering**: Apply filters across datasets
+- **Configurable Schemas**: Handled by business logic
 
 ## 7. User Interaction Requirements
 
 ### 7.1 Navigation
-- **Non-modal Operations**: All dataset selection should be non-modal
 - **Responsive Interface**: Smooth interaction even with large datasets
 - **Keyboard Shortcuts**: Common operations accessible via keyboard
 - **Context Menus**: Right-click menus for common actions
 
 ### 7.2 Customization
-- **View Preferences**: Save/load view configurations
 - **Color Schemes**: Customizable color palettes
 - **Layout Options**: Adjustable panel sizes
 - **Export Options**: Save plots and data extracts
@@ -174,7 +196,6 @@ dataset_directory/
 ## 8. Performance Requirements
 
 ### 8.1 Data Handling
-- **Large Dataset Support**: Handle datasets with millions of rows
 - **Memory Management**: Efficient memory usage for multiple datasets
 - **Lazy Loading**: Load data on-demand where possible
 - **Caching**: Cache processed results for performance
@@ -187,11 +208,11 @@ dataset_directory/
 ## 9. Technical Requirements
 
 ### 9.1 File Format Support
-- CSV files
-- JSON files
-- Parquet files
-- Excel files (optional)
-- Custom formats (extensible)
+- **CSV files**: Standard comma-separated values
+  - Expected columns for truth: [timestamp, lat, lon, alt, id]
+  - Expected columns for tracks: [timestamp, lat, lon, alt, track_id]
+  - Expected columns for detections: [timestamp, lat, lon, alt, detection_id]
+- .pkl files
 
 ### 9.2 Dependencies
 - Python 3.8+
@@ -199,62 +220,47 @@ dataset_directory/
 - pandas
 - matplotlib
 - numpy
-- jsonschema (for validation)
 - plotly (for advanced interactive plots)
 
-### 9.3 Platform Support
-- Windows (primary)
-- macOS (secondary)
-- Linux (secondary)
+## 10. Development Phases
 
-## 10. Future Enhancements
+### 10.1 Phase 1: Core Infrastructure
+- Basic tkinter application window
+- Menu bar and status bar
+- Left/right panel layout with placeholder content
+- Basic navigation between panels
 
-### 10.1 Advanced Features
-- Machine learning integration
-- Database connectivity
-- Real-time data streaming
-- Advanced statistical analysis
-- Report generation
+### 10.2 Phase 3: Placeholder Data Generation
+- Create two placeholder datasets
+- Each contains placeholder tracks, truths, and detections in CSV format
 
-### 10.2 User Experience Improvements
-- Drag-and-drop file loading
-- Undo/redo functionality
-- Session save/restore
-- Plugin architecture
+### 10.3 Phase 3: Data Management
+- Directory selection dialog
+- Dataset discovery and listing
+- Mock business logic interface implementation
+- Left panel dataset overview implementation
+- Dataset selection and focus controls
 
-## 11. Development Phases
+### 10.4 Phase 4: Basic Visualization using Matplotlib
+- Extensible, modular software design practice for reusable components
+- Matplotlib canvas integration
+- NavigationToolbar2Tk setup
+- First simple plot 
+- Plot export functionality
+- Tab-based view selection framework
 
-### 11.1 Phase 1: Core Infrastructure
-- Basic GUI layout
-- File system interface
-- Data loading framework
-- Basic visualization
+### 10.5 Phase 5: Other Matplotlib plots
+- As defined in section 5.1.1
 
-### 11.2 Phase 2: Analysis Views
-- Statistical views
-- Geospatial plotting
-- Basic temporal analysis
+### 10.6 Phase 6: Basic Visualization using plotly
+- Extensible, modular software design practice for reusable components
+- Matplotlib canvas integration
+- NavigationToolbar2Tk setup
+- First simple plot 
+- Plot export functionality
+- Tab-based view selection framework
 
-### 11.3 Phase 3: Advanced Features
-- Animation capabilities
-- Custom plotting
-- Schema validation
-- Performance optimization
-
-### 11.4 Phase 4: Polish and Enhancement
-- User experience improvements
-- Advanced visualizations
-- Export capabilities
-- Documentation
-
-## 12. Success Criteria
-
-- Users can load and analyze multiple datasets efficiently
-- Interactive visualizations provide meaningful insights
-- Application remains responsive with large datasets
-- Interface is intuitive and requires minimal training
-- Data validation provides clear feedback on data quality
+### 10.7 Phase 7: Other plotly plots
+- As defined in section 5.1.2
 
 ---
-
-*This requirements specification serves as the foundation for the data analysis application development. It should be reviewed and refined based on specific user needs and technical constraints.*
