@@ -12,8 +12,7 @@ from typing import Optional, Any, Dict, List
 import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.backends._backend_tk import NavigationToolbar2Tk
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.figure import Figure
 import numpy as np
 
@@ -117,7 +116,7 @@ class MatplotlibCanvas:
         ax.set_yticks([])
         self.canvas.draw()
     
-    def create_simple_plot(self, data: Dict[str, Any], plot_config: Optional[Dict[str, Any]] = None):
+    def create_simple_plot(self, data: Dict[str, Any], plot_config: Dict[str, Any] = None):
         """
         Create a simple plot based on provided data.
         

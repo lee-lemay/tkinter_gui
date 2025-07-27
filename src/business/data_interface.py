@@ -195,9 +195,13 @@ class MockDataInterface(DataInterface):
         """
         Load a dataset from the specified path.
         
-        This mock implementation loads CSV files from the expected subdirectories.
+        This implementation loads real CSV files from the dataset directory structure.
+        Expected schema:
+        - Truth: [timestamp, lat, lon, alt, id]
+        - Tracks: [timestamp, lat, lon, alt, track_id]  
+        - Detections: [timestamp, lat, lon, alt, detection_id]
         """
-        self.logger.info(f"Loading dataset from: {dataset_path}")
+        self.logger.info(f"Loading real dataset from: {dataset_path}")
         
         dataframes = {}
         
@@ -220,8 +224,20 @@ class MockDataInterface(DataInterface):
                     csv_file = csv_files[0]
                     try:
                         df = pd.read_csv(csv_file)
-                        dataframes[data_type] = df
-                        self.logger.debug(f"Loaded {data_type}: {len(df)} records from {csv_file.name}")
+                        
+                        # Validate schema matches requirements
+                        expected_cols = self._get_expected_columns(data_type)
+                        if list(df.columns) == expected_cols:
+                            # Convert timestamp if it's a string
+                            if 'timestamp' in df.columns:
+                                df['timestamp'] = pd.to_datetime(df['timestamp'])
+                            
+                            dataframes[data_type] = df
+                            self.logger.info(f"Successfully loaded {data_type}: {len(df)} records from {csv_file.name}")
+                        else:
+                            self.logger.warning(f"Schema mismatch in {csv_file.name}. Expected: {expected_cols}, Got: {list(df.columns)}")
+                            dataframes[data_type] = self._create_empty_dataframe(data_type)
+                            
                     except Exception as e:
                         self.logger.error(f"Error loading {csv_file}: {e}")
                         # Create empty DataFrame with expected columns
@@ -423,13 +439,17 @@ class MockDataInterface(DataInterface):
         Get track counts for all loaded datasets.
         
         This mock implementation returns placeholder counts.
+        Note: In a real implementation, this would query the application state
+        for loaded datasets.
         """
         self.logger.debug("Getting track counts for all datasets")
         
+        # For Phase 4, we'll return mock data since this method
+        # doesn't have access to the application state
+        # The plot_manager handles real data through app_state
         return {
-            'Dataset_A': 25,
-            'Dataset_B': 18,
-            'Dataset_C': 32
+            'sample_dataset_alpha': 25,
+            'sample_dataset_beta': 18,
         }
     
     def get_lat_lon_data(self, dataset_name: str, 
