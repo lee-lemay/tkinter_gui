@@ -1114,14 +1114,21 @@ class RightPanel:
             # Ensure min < max
             if lat_min >= lat_max:
                 return  # Skip update if invalid range
-            if lon_min >= lon_max:
+            if lon_max <= lon_min:
                 return  # Skip update if invalid range
             
-            # Update the animation plot
-            self._show_animation_plot()
+            # Update the stored animation data ranges
+            if hasattr(self, 'anim_data') and self.anim_data:
+                self.anim_data['lat_range'] = (lat_min, lat_max)
+                self.anim_data['lon_range'] = (lon_min, lon_max)
+                
+                # If we have animation data, just update the current frame with new ranges
+                self._update_animation_frame()
+            else:
+                # If no animation data yet, regenerate the entire plot
+                self._show_animation_plot()
             
         except Exception as e:
-            self.logger.error(f"Error updating animation plot after range change: {e}")
             self.logger.error(f"Error updating animation plot after range change: {e}")
     
     def _on_geospatial_zoom(self, xlim, ylim):
@@ -1131,24 +1138,28 @@ class RightPanel:
             lon_min, lon_max = xlim
             lat_min, lat_max = ylim
             
-            # Set a flag to prevent recursive updates
-            if not hasattr(self, '_updating_geo_ranges'):
-                self._updating_geo_ranges = True
+            # Check if we're already updating to prevent recursion
+            if getattr(self, '_updating_geo_ranges', False):
+                return
                 
+            # Set a flag to prevent recursive updates
+            self._updating_geo_ranges = True
+            
+            try:
                 # Update the variables
                 self.geo_lat_min_var.set(lat_min)
                 self.geo_lat_max_var.set(lat_max)
                 self.geo_lon_min_var.set(lon_min)
                 self.geo_lon_max_var.set(lon_max)
                 
-                self._updating_geo_ranges = False
-                
                 self.logger.debug(f"Geospatial zoom updated ranges: lat {lat_min:.4f}-{lat_max:.4f}, lon {lon_min:.4f}-{lon_max:.4f}")
+            finally:
+                self._updating_geo_ranges = False
             
         except Exception as e:
             self.logger.error(f"Error handling geospatial zoom: {e}")
-            if hasattr(self, '_updating_geo_ranges'):
-                self._updating_geo_ranges = False
+            # Ensure flag is cleared even on error
+            self._updating_geo_ranges = False
     
     def _on_animation_zoom(self, xlim, ylim):
         """Handle zoom/pan events on animation plot."""
@@ -1157,28 +1168,37 @@ class RightPanel:
             lon_min, lon_max = xlim
             lat_min, lat_max = ylim
             
-            # Set a flag to prevent recursive updates
-            if not hasattr(self, '_updating_anim_ranges'):
-                self._updating_anim_ranges = True
+            # Check if we're already updating to prevent recursion
+            if getattr(self, '_updating_anim_ranges', False):
+                return
                 
+            # Set a flag to prevent recursive updates
+            self._updating_anim_ranges = True
+            
+            try:
                 # Update the variables
                 self.anim_lat_min_var.set(lat_min)
                 self.anim_lat_max_var.set(lat_max)
                 self.anim_lon_min_var.set(lon_min)
                 self.anim_lon_max_var.set(lon_max)
                 
-                self._updating_anim_ranges = False
+                # Update the stored animation data ranges so they persist
+                if hasattr(self, 'anim_data') and self.anim_data:
+                    self.anim_data['lat_range'] = (lat_min, lat_max)
+                    self.anim_data['lon_range'] = (lon_min, lon_max)
                 
                 # If animation is currently playing, update the current frame
                 if hasattr(self, 'anim_data') and self.anim_data and not self.anim_playing.get():
                     self._update_animation_frame()
                 
                 self.logger.debug(f"Animation zoom updated ranges: lat {lat_min:.4f}-{lat_max:.4f}, lon {lon_min:.4f}-{lon_max:.4f}")
+            finally:
+                self._updating_anim_ranges = False
             
         except Exception as e:
             self.logger.error(f"Error handling animation zoom: {e}")
-            if hasattr(self, '_updating_anim_ranges'):
-                self._updating_anim_ranges = False
+            # Ensure flag is cleared even on error
+            self._updating_anim_ranges = False
     
     # Coordinate Range Initialization Methods
     def _initialize_coordinate_ranges(self):
@@ -1470,6 +1490,10 @@ class RightPanel:
             
             # Filter data to current time
             filtered_data = self._filter_animation_data_to_time(current_time)
+            
+            # Use current coordinate ranges from controls instead of stored ones
+            filtered_data['lat_range'] = (self.anim_lat_min_var.get(), self.anim_lat_max_var.get())
+            filtered_data['lon_range'] = (self.anim_lon_min_var.get(), self.anim_lon_max_var.get())
             
             # Update plot
             self.canvas_widgets['animation'].create_animation_frame(filtered_data, current_frame, self.anim_max_frames)

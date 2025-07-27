@@ -149,7 +149,9 @@ class MatplotlibCanvas:
         """Handle general navigation events (button, key, scroll)."""
         # Use a small delay to ensure axes have been updated
         if hasattr(self, 'canvas_widget') and self.canvas_widget:
+            # Check immediately and also after a short delay to catch all updates
             self.canvas_widget.after_idle(self._check_axes_limits)
+            self.canvas_widget.after(50, self._check_axes_limits)  # Additional check after 50ms
     
     def _check_axes_limits(self):
         """Check if axes limits have changed and notify callback."""
@@ -644,6 +646,7 @@ class MatplotlibCanvas:
             # Update canvas
             self.figure.tight_layout()
             self.canvas.draw()
+            self.canvas.flush_events()  # Ensure all drawing events are processed
             
             # Initialize limit tracking for animation frame
             self._initialize_limit_tracking()
