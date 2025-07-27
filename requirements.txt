@@ -1,0 +1,17 @@
+# Data Analysis Application Requirements
+# Phase 1: Core Infrastructure
+
+# Core dependencies
+pandas>=1.5.0
+numpy>=1.21.0
+
+# GUI and visualization (for future phases)
+matplotlib>=3.5.0
+
+# Optional dependencies for future enhancements
+# plotly>=5.0.0  # Uncomment when needed in later phases
+
+# Development dependencies (optional)
+# pytest>=7.0.0
+# black>=22.0.0
+# flake8>=4.0.0
