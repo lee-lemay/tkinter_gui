@@ -223,11 +223,20 @@ class PlotManager:
             if not truth_df.empty and 'lat' in truth_df.columns and 'lon' in truth_df.columns:
                 lat_lon_data['truth'] = truth_df[['lat', 'lon']].copy()
         
-        return {
+        # Pass coordinate ranges from config
+        result = {
             'lat_lon_data': lat_lon_data,
             'title': f'Lat/Lon Plot - {focus_dataset.name}',
             'plot_type': 'scatter'
         }
+        
+        # Include range configuration if provided
+        if 'lat_range' in config:
+            result['lat_range'] = config['lat_range']
+        if 'lon_range' in config:
+            result['lon_range'] = config['lon_range']
+        
+        return result
     
     def _prepare_demo_data(self, app_state: ApplicationState, 
                           config: Dict[str, Any]) -> Dict[str, Any]:
@@ -446,7 +455,9 @@ class PlotManager:
         return {
             'animation_data': animation_data,
             'title': f'Animated Lat/Lon - {focus_dataset.name}',
-            'plot_type': 'animation'
+            'plot_type': 'animation',
+            'lat_range': config.get('lat_range'),
+            'lon_range': config.get('lon_range')
         }
     
     def get_plot_info(self, plot_id: str) -> Optional[Dict[str, Any]]:

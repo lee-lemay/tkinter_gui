@@ -265,13 +265,13 @@ class RightPanel:
         
         ttk.Label(lat_frame, text="Latitude:").pack(side="left")
         ttk.Label(lat_frame, text="Min:").pack(side="left", padx=(10, 2))
-        self.geo_lat_min_var = tk.DoubleVar(value=-90.0)
+        self.geo_lat_min_var = tk.DoubleVar(value=-1.0)  # Will be updated based on data
         self.geo_lat_min_spin = ttk.Spinbox(lat_frame, from_=-90.0, to=90.0, increment=0.1,
                                           textvariable=self.geo_lat_min_var, width=8, format="%.1f")
         self.geo_lat_min_spin.pack(side="left", padx=2)
         
         ttk.Label(lat_frame, text="Max:").pack(side="left", padx=(10, 2))
-        self.geo_lat_max_var = tk.DoubleVar(value=90.0)
+        self.geo_lat_max_var = tk.DoubleVar(value=1.0)  # Will be updated based on data
         self.geo_lat_max_spin = ttk.Spinbox(lat_frame, from_=-90.0, to=90.0, increment=0.1,
                                           textvariable=self.geo_lat_max_var, width=8, format="%.1f")
         self.geo_lat_max_spin.pack(side="left", padx=2)
@@ -282,23 +282,36 @@ class RightPanel:
         
         ttk.Label(lon_frame, text="Longitude:").pack(side="left")
         ttk.Label(lon_frame, text="Min:").pack(side="left", padx=(10, 2))
-        self.geo_lon_min_var = tk.DoubleVar(value=-180.0)
+        self.geo_lon_min_var = tk.DoubleVar(value=-1.0)  # Will be updated based on data
         self.geo_lon_min_spin = ttk.Spinbox(lon_frame, from_=-180.0, to=180.0, increment=0.1,
                                           textvariable=self.geo_lon_min_var, width=8, format="%.1f")
         self.geo_lon_min_spin.pack(side="left", padx=2)
         
         ttk.Label(lon_frame, text="Max:").pack(side="left", padx=(10, 2))
-        self.geo_lon_max_var = tk.DoubleVar(value=180.0)
+        self.geo_lon_max_var = tk.DoubleVar(value=1.0)  # Will be updated based on data
         self.geo_lon_max_spin = ttk.Spinbox(lon_frame, from_=-180.0, to=180.0, increment=0.1,
                                           textvariable=self.geo_lon_max_var, width=8, format="%.1f")
         self.geo_lon_max_spin.pack(side="left", padx=2)
         
+        # Add range button to coordinate range section
+        range_button_frame = ttk.Frame(range_frame)
+        range_button_frame.pack(fill="x", padx=5, pady=5)
+        
+        ttk.Button(range_button_frame, text="Reset Range", 
+                  command=self._reset_geo_range).pack()
+        
+        # Add change handlers for auto-update
+        self.geo_lat_min_var.trace('w', self._on_geo_range_changed)
+        self.geo_lat_max_var.trace('w', self._on_geo_range_changed)
+        self.geo_lon_min_var.trace('w', self._on_geo_range_changed)
+        self.geo_lon_max_var.trace('w', self._on_geo_range_changed)
+        
+        # Initialize ranges based on data
+        self._initialize_coordinate_ranges()
+        
         # Buttons frame (right section)
         buttons_frame = ttk.LabelFrame(controls_container, text="Actions")
         buttons_frame.pack(side="left", fill="y", padx=5)
-        
-        ttk.Button(buttons_frame, text="Reset Range", 
-                  command=self._reset_geo_range).pack(padx=5, pady=5)
         
         # Create matplotlib canvas
         canvas_frame = ttk.Frame(geo_frame)
@@ -472,13 +485,13 @@ class RightPanel:
         
         ttk.Label(anim_lat_frame, text="Latitude:").pack(side="left")
         ttk.Label(anim_lat_frame, text="Min:").pack(side="left", padx=(10, 2))
-        self.anim_lat_min_var = tk.DoubleVar(value=-90.0)
+        self.anim_lat_min_var = tk.DoubleVar(value=-1.0)  # Will be updated based on data
         self.anim_lat_min_spin = ttk.Spinbox(anim_lat_frame, from_=-90.0, to=90.0, increment=0.1,
                                            textvariable=self.anim_lat_min_var, width=8, format="%.1f")
         self.anim_lat_min_spin.pack(side="left", padx=2)
         
         ttk.Label(anim_lat_frame, text="Max:").pack(side="left", padx=(10, 2))
-        self.anim_lat_max_var = tk.DoubleVar(value=90.0)
+        self.anim_lat_max_var = tk.DoubleVar(value=1.0)  # Will be updated based on data
         self.anim_lat_max_spin = ttk.Spinbox(anim_lat_frame, from_=-90.0, to=90.0, increment=0.1,
                                            textvariable=self.anim_lat_max_var, width=8, format="%.1f")
         self.anim_lat_max_spin.pack(side="left", padx=2)
@@ -489,16 +502,32 @@ class RightPanel:
         
         ttk.Label(anim_lon_frame, text="Longitude:").pack(side="left")
         ttk.Label(anim_lon_frame, text="Min:").pack(side="left", padx=(10, 2))
-        self.anim_lon_min_var = tk.DoubleVar(value=-180.0)
+        self.anim_lon_min_var = tk.DoubleVar(value=-1.0)  # Will be updated based on data
         self.anim_lon_min_spin = ttk.Spinbox(anim_lon_frame, from_=-180.0, to=180.0, increment=0.1,
                                            textvariable=self.anim_lon_min_var, width=8, format="%.1f")
         self.anim_lon_min_spin.pack(side="left", padx=2)
         
         ttk.Label(anim_lon_frame, text="Max:").pack(side="left", padx=(10, 2))
-        self.anim_lon_max_var = tk.DoubleVar(value=180.0)
+        self.anim_lon_max_var = tk.DoubleVar(value=1.0)  # Will be updated based on data
         self.anim_lon_max_spin = ttk.Spinbox(anim_lon_frame, from_=-180.0, to=180.0, increment=0.1,
                                            textvariable=self.anim_lon_max_var, width=8, format="%.1f")
         self.anim_lon_max_spin.pack(side="left", padx=2)
+        
+        # Add range button to coordinate range section
+        anim_range_button_frame = ttk.Frame(anim_range_frame)
+        anim_range_button_frame.pack(fill="x", padx=5, pady=5)
+        
+        ttk.Button(anim_range_button_frame, text="Reset Range", 
+                  command=self._reset_animation_range).pack()
+        
+        # Add change handlers for auto-update
+        self.anim_lat_min_var.trace('w', self._on_anim_range_changed)
+        self.anim_lat_max_var.trace('w', self._on_anim_range_changed)
+        self.anim_lon_min_var.trace('w', self._on_anim_range_changed)
+        self.anim_lon_max_var.trace('w', self._on_anim_range_changed)
+        
+        # Initialize ranges if this is called after geospatial tab (geospatial tab handles initial setup)
+        # This ensures both tabs have consistent initial values
         
         # Playback controls frame (right section)
         playback_frame = ttk.LabelFrame(controls_container, text="Playback Controls")
@@ -545,13 +574,6 @@ class RightPanel:
         
         self.speed_label = ttk.Label(playback_row3, text="1.0x")
         self.speed_label.pack(side="left", padx=2)
-        
-        # Fourth row - reset button
-        playback_row4 = ttk.Frame(playback_frame)
-        playback_row4.pack(fill="x", padx=5, pady=2)
-        
-        ttk.Button(playback_row4, text="Reset Range", 
-                  command=self._reset_animation_range).pack(padx=5)
         
         # Bind speed change
         self.anim_speed.trace('w', self._on_speed_changed)
@@ -853,6 +875,9 @@ class RightPanel:
                 # Refresh dataset selection when datasets change
                 self._refresh_dataset_selection()
                 
+                # Update coordinate ranges based on new data
+                self._initialize_coordinate_ranges()
+                
                 # Update track counts display
                 self._show_track_counts()
                 
@@ -871,6 +896,9 @@ class RightPanel:
             elif event == "focus_changed":
                 # Refresh dataset selection when focus dataset changes
                 self._refresh_dataset_selection()
+                
+                # Update coordinate ranges when focus changes
+                self._initialize_coordinate_ranges()
                 
                 # Auto-update all plots if focus dataset is loaded
                 focus_info = state.get_focus_dataset_info()
@@ -1018,19 +1046,122 @@ class RightPanel:
     
     # Range Reset Methods
     def _reset_geo_range(self):
-        """Reset geospatial coordinate ranges to defaults."""
-        self.geo_lat_min_var.set(-90.0)
-        self.geo_lat_max_var.set(90.0)
-        self.geo_lon_min_var.set(-180.0)
-        self.geo_lon_max_var.set(180.0)
+        """Reset geospatial coordinate ranges to data-based defaults."""
+        # Re-initialize ranges based on current data
+        self._initialize_coordinate_ranges()
+        # Trigger plot update after reset
+        self._auto_update_geospatial_plot()
     
     def _reset_animation_range(self):
-        """Reset animation coordinate ranges to defaults."""
-        self.anim_lat_min_var.set(-90.0)
-        self.anim_lat_max_var.set(90.0)
-        self.anim_lon_min_var.set(-180.0)
-        self.anim_lon_max_var.set(180.0)
+        """Reset animation coordinate ranges to data-based defaults."""
+        # Re-initialize ranges based on current data
+        self._initialize_coordinate_ranges()
+        # Trigger plot update after reset
+        self._show_animation_plot()
     
+    # Range Change Handlers
+    def _on_geo_range_changed(self, *args):
+        """Handle changes in geospatial coordinate ranges."""
+        try:
+            # Validate ranges
+            lat_min = self.geo_lat_min_var.get()
+            lat_max = self.geo_lat_max_var.get()
+            lon_min = self.geo_lon_min_var.get()
+            lon_max = self.geo_lon_max_var.get()
+            
+            # Ensure min < max
+            if lat_min >= lat_max:
+                return  # Skip update if invalid range
+            if lon_min >= lon_max:
+                return  # Skip update if invalid range
+            
+            # Update the geospatial plot
+            self._auto_update_geospatial_plot()
+            
+        except Exception as e:
+            self.logger.error(f"Error updating geospatial plot after range change: {e}")
+    
+    def _on_anim_range_changed(self, *args):
+        """Handle changes in animation coordinate ranges."""
+        try:
+            # Validate ranges
+            lat_min = self.anim_lat_min_var.get()
+            lat_max = self.anim_lat_max_var.get()
+            lon_min = self.anim_lon_min_var.get()
+            lon_max = self.anim_lon_max_var.get()
+            
+            # Ensure min < max
+            if lat_min >= lat_max:
+                return  # Skip update if invalid range
+            if lon_min >= lon_max:
+                return  # Skip update if invalid range
+            
+            # Update the animation plot
+            self._show_animation_plot()
+            
+        except Exception as e:
+            self.logger.error(f"Error updating animation plot after range change: {e}")
+    
+    # Coordinate Range Initialization Methods
+    def _initialize_coordinate_ranges(self):
+        """Initialize coordinate ranges based on actual data."""
+        try:
+            if not self.controller:
+                return
+                
+            app_state = self.controller.get_state()
+            if not app_state or not app_state.current_data:
+                return
+            
+            # Get data bounds from detections
+            data = app_state.current_data
+            if 'detections_data' in data and not data['detections_data'].empty:
+                df = data['detections_data']
+                lat_data = df['latitude'].dropna()
+                lon_data = df['longitude'].dropna()
+                
+                if len(lat_data) > 0 and len(lon_data) > 0:
+                    # Calculate data bounds with small padding
+                    lat_min, lat_max = lat_data.min(), lat_data.max()
+                    lon_min, lon_max = lon_data.min(), lon_data.max()
+                    
+                    # Add 10% padding
+                    lat_range = lat_max - lat_min
+                    lon_range = lon_max - lon_min
+                    padding_lat = lat_range * 0.1
+                    padding_lon = lon_range * 0.1
+                    
+                    lat_min -= padding_lat
+                    lat_max += padding_lat
+                    lon_min -= padding_lon
+                    lon_max += padding_lon
+                    
+                    # Make the range square by taking the larger range and centering
+                    lat_center = (lat_max + lat_min) / 2
+                    lon_center = (lon_max + lon_min) / 2
+                    max_range = max(lat_max - lat_min, lon_max - lon_min)
+                    half_range = max_range / 2
+                    
+                    # Set square ranges
+                    self.geo_lat_min_var.set(round(lat_center - half_range, 1))
+                    self.geo_lat_max_var.set(round(lat_center + half_range, 1))
+                    self.geo_lon_min_var.set(round(lon_center - half_range, 1))
+                    self.geo_lon_max_var.set(round(lon_center + half_range, 1))
+                    
+                    # Update animation ranges to match
+                    if hasattr(self, 'anim_lat_min_var'):
+                        self.anim_lat_min_var.set(round(lat_center - half_range, 1))
+                        self.anim_lat_max_var.set(round(lat_center + half_range, 1))
+                        self.anim_lon_min_var.set(round(lon_center - half_range, 1))
+                        self.anim_lon_max_var.set(round(lon_center + half_range, 1))
+                    
+        except Exception as e:
+            self.logger.error(f"Error initializing coordinate ranges: {e}")
+
+    def update_coordinate_ranges(self):
+        """Update coordinate ranges when new data is loaded."""
+        self._initialize_coordinate_ranges()
+
     # Track Selection Change Handlers
     def _on_error_track_selection_changed(self, event=None):
         """Handle changes in error analysis track selection."""

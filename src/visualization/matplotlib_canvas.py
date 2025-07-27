@@ -200,6 +200,15 @@ class MatplotlibCanvas:
             ax.scatter(truth_df['lon'], truth_df['lat'], 
                       c='red', alpha=0.6, s=20, marker='^', label='Truth')
         
+        # Apply coordinate ranges if provided
+        if 'lat_range' in data:
+            lat_min, lat_max = data['lat_range']
+            ax.set_ylim(lat_min, lat_max)
+        
+        if 'lon_range' in data:
+            lon_min, lon_max = data['lon_range']
+            ax.set_xlim(lon_min, lon_max)
+        
         # Styling
         ax.set_title('Latitude vs Longitude', fontsize=14, fontweight='bold')
         ax.set_xlabel('Longitude', fontsize=12)
