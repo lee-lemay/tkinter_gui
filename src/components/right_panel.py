@@ -13,6 +13,8 @@ from typing import Optional, Any, Dict, List
 
 from ..visualization.matplotlib_canvas import MatplotlibCanvas
 from ..visualization.plot_manager import PlotManager
+from ..plotting.backends import MatplotlibBackend
+from ..plotting.widgets import StatisticsTabWidget
 
 
 class RightPanel:
@@ -57,6 +59,12 @@ class RightPanel:
         # Initialize plot manager with business logic interface
         if hasattr(controller, 'data_interface'):
             self.plot_manager = PlotManager(controller.data_interface)
+        
+        # Pass controller and plot manager to modular widgets
+        if hasattr(self, 'statistics_tab'):
+            self.statistics_tab.set_controller(controller)
+            if hasattr(self, 'plot_manager'):
+                self.statistics_tab.set_plot_manager(self.plot_manager)
         
         self.logger.debug("Controller set for right panel")
     
@@ -200,23 +208,24 @@ class RightPanel:
         self._refresh_dataset_selection()
     
     def _create_statistics_tab(self):
-        """Create the statistics tab."""
-        stats_frame = ttk.Frame(self.notebook)
-        self.notebook.add(stats_frame, text="Statistics")
+        """Create the statistics tab using modular widget architecture."""
+        # Create backend for this tab
+        stats_backend = MatplotlibBackend()
         
-        # Control panel for statistics
-        control_frame = ttk.LabelFrame(stats_frame, text="Statistics Controls")
-        control_frame.pack(fill="x", padx=10, pady=10)
+        # Create the statistics tab widget
+        self.statistics_tab = StatisticsTabWidget(self.notebook, stats_backend)
+        self.notebook.add(self.statistics_tab, text="Statistics")
         
-        # Create matplotlib canvas
-        canvas_frame = ttk.Frame(stats_frame)
-        canvas_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        # Set dependencies
+        if hasattr(self, 'controller'):
+            self.statistics_tab.set_controller(self.controller)
+        if hasattr(self, 'plot_manager'):
+            self.statistics_tab.set_plot_manager(self.plot_manager)
         
-        self.canvas_widgets['statistics'] = MatplotlibCanvas(canvas_frame)
-        self.canvas_widgets['statistics'].frame.pack(fill="both", expand=True)
-        
-        # Show initial track counts if data is available
-        self._show_track_counts()
+        # Store reference in a separate dict for the new modular widgets
+        if not hasattr(self, 'tab_widgets'):
+            self.tab_widgets = {}
+        self.tab_widgets['statistics'] = self.statistics_tab
     
     def _create_geospatial_tab(self):
         """Create the geospatial analysis tab with enhanced controls."""
@@ -611,12 +620,17 @@ class RightPanel:
             return
         
         try:
-            app_state = self.controller.get_state()
-            plot_data = self.plot_manager.prepare_plot_data('track_counts', app_state)
-            
-            if 'error' not in plot_data:
-                canvas = self.canvas_widgets['statistics']
-                canvas.create_simple_plot({'track_counts': plot_data['track_counts']})
+            # Use the new modular statistics tab if available
+            if hasattr(self, 'statistics_tab'):
+                self.statistics_tab.auto_update()
+            else:
+                # Fallback to old method for backward compatibility
+                app_state = self.controller.get_state()
+                plot_data = self.plot_manager.prepare_plot_data('track_counts', app_state)
+                
+                if 'error' not in plot_data and 'statistics' in self.canvas_widgets:
+                    canvas = self.canvas_widgets['statistics']
+                    canvas.create_simple_plot({'track_counts': plot_data['track_counts']})
             
         except Exception as e:
             self.logger.error(f"Error showing track counts: {e}")
@@ -779,22 +793,38 @@ class RightPanel:
     def _auto_update_statistics_plot(self):
         """Auto-update statistics plot when focus dataset changes."""
         try:
-            if not self.plot_manager or not self.controller:
+            if not self.controller:
+                self.logger.debug("No controller available for statistics auto-update")
                 return
             
             app_state = self.controller.get_state()
             focus_info = app_state.get_focus_dataset_info()
             
-            # Only auto-update if we have a loaded focus dataset with data
-            if (focus_info and 
-                focus_info.status.value == "loaded" and 
-                focus_info.tracks_df is not None and not focus_info.tracks_df.empty):
+            # Check if we have a loaded focus dataset with any data
+            if (focus_info and focus_info.status.value == "loaded"):
+                # Check if any data is available (tracks, truth, or detections)
+                has_data = (
+                    (focus_info.tracks_df is not None and not focus_info.tracks_df.empty) or
+                    (focus_info.truth_df is not None and not focus_info.truth_df.empty) or
+                    (focus_info.detections_df is not None and not focus_info.detections_df.empty)
+                )
                 
-                plot_data = self.plot_manager.prepare_plot_data('track_counts', app_state, {})
-                
-                if 'error' not in plot_data and 'visualization' in self.canvas_widgets:
-                    self.canvas_widgets['visualization'].create_simple_plot(plot_data)
-                    self.logger.debug(f"Auto-updated statistics plot for dataset: {focus_info.name}")
+                if has_data:
+                    # Use the new modular statistics tab if available
+                    if hasattr(self, 'statistics_tab') and hasattr(self.statistics_tab, 'auto_update'):
+                        self.statistics_tab.auto_update()
+                        self.logger.debug(f"Auto-updated modular statistics plot for dataset: {focus_info.name}")
+                    elif self.plot_manager:
+                        # Fallback to old method
+                        plot_data = self.plot_manager.prepare_plot_data('track_counts', app_state, {})
+                        
+                        if 'error' not in plot_data and 'visualization' in self.canvas_widgets:
+                            self.canvas_widgets['visualization'].create_simple_plot(plot_data)
+                            self.logger.debug(f"Auto-updated legacy statistics plot for dataset: {focus_info.name}")
+                else:
+                    self.logger.debug(f"No data available in focus dataset: {focus_info.name}")
+            else:
+                self.logger.debug("No loaded focus dataset available for statistics update")
             
         except Exception as e:
             self.logger.error(f"Error auto-updating statistics plot: {e}")
