@@ -417,7 +417,7 @@ class MatplotlibCanvas:
         """Plot 3D RMS error data with time on X-axis and error on Y-axis."""
         rms_data = data['rms_data']
         
-        if not rms_data['rms_error']:
+        if not rms_data['rms_error_3d']:
             ax.text(0.5, 0.5, 'No RMS error data available',
                    horizontalalignment='center', verticalalignment='center',
                    transform=ax.transAxes, fontsize=12, color='gray')
@@ -432,12 +432,12 @@ class MatplotlibCanvas:
         relative_times = [(t - start_time).total_seconds() for t in timestamps]
         
         # Create line plot with time on X-axis and RMS error on Y-axis
-        ax.plot(relative_times, rms_data['rms_error'], 
+        ax.plot(relative_times, rms_data['rms_error_3d'], 
                 'o-', color='blue', linewidth=2, markersize=4, alpha=0.7)
         
         # Add trend line if there are enough points
         if len(relative_times) > 1:
-            z = np.polyfit(relative_times, rms_data['rms_error'], 1)
+            z = np.polyfit(relative_times, rms_data['rms_error_3d'], 1)
             p = np.poly1d(z)
             ax.plot(relative_times, p(relative_times), 
                    '--', color='red', alpha=0.8, linewidth=1, label='Trend')

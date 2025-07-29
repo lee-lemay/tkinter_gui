@@ -215,13 +215,13 @@ class PlotManager:
         if config.get('include_tracks', True) and focus_dataset.tracks_df is not None:
             tracks_df = focus_dataset.tracks_df
             if not tracks_df.empty and 'lat' in tracks_df.columns and 'lon' in tracks_df.columns:
-                lat_lon_data['tracks'] = tracks_df[['lat', 'lon']].copy()
+                lat_lon_data['tracks'] = tracks_df[['track_id', 'lat', 'lon']].copy()
         
         # Include truth if requested (default True)  
         if config.get('include_truth', True) and focus_dataset.truth_df is not None:
             truth_df = focus_dataset.truth_df
             if not truth_df.empty and 'lat' in truth_df.columns and 'lon' in truth_df.columns:
-                lat_lon_data['truth'] = truth_df[['lat', 'lon']].copy()
+                lat_lon_data['truth'] = truth_df[['id', 'lat', 'lon']].copy()
         
         # Pass coordinate ranges from config
         result = {
@@ -348,7 +348,7 @@ class PlotManager:
         truth_df = focus_dataset.truth_df
         
         # Calculate 3D RMS errors
-        rms_data = {'x_pos': [], 'y_pos': [], 'rms_error': [], 'timestamps': []}
+        rms_data = {'x_pos': [], 'y_pos': [], 'rms_error_3d': [], 'timestamps': []}
         
         for _, track_row in tracks_df.iterrows():
             # Find closest truth point
@@ -361,11 +361,11 @@ class PlotManager:
             lon_error = (track_row['lon'] - truth_row['lon']) * 111000 * np.cos(np.radians(truth_row['lat']))
             alt_error = track_row['alt'] - truth_row['alt']
             
-            rms_error = np.sqrt(lat_error**2 + lon_error**2 + alt_error**2)
+            rms_error_3d = np.sqrt(lat_error**2 + lon_error**2 + alt_error**2)
             
             rms_data['x_pos'].append(track_row['lat'])
             rms_data['y_pos'].append(track_row['lon'])
-            rms_data['rms_error'].append(rms_error)
+            rms_data['rms_error_3d'].append(rms_error_3d)
             rms_data['timestamps'].append(track_row['timestamp'])
         
         return {

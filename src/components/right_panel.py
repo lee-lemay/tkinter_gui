@@ -14,7 +14,13 @@ from typing import Optional, Any, Dict, List
 from ..visualization.matplotlib_canvas import MatplotlibCanvas
 from ..visualization.plot_manager import PlotManager
 from ..plotting.backends import MatplotlibBackend
-from ..plotting.widgets import StatisticsTabWidget
+from ..plotting.statistics_tab import StatisticsTabWidget
+from ..plotting.overview_tab import OverviewTabWidget
+from ..plotting.geospatial_tab import GeospatialTabWidget
+from ..plotting.error_analysis_tab import ErrorAnalysisTabWidget
+from ..plotting.rms_error_tab import RMSErrorTabWidget
+from ..plotting.lifetime_tab import LifetimeTabWidget
+from ..plotting.animation_tab import AnimationTabWidget
 
 
 class RightPanel:
@@ -60,11 +66,12 @@ class RightPanel:
         if hasattr(controller, 'data_interface'):
             self.plot_manager = PlotManager(controller.data_interface)
         
-        # Pass controller and plot manager to modular widgets
-        if hasattr(self, 'statistics_tab'):
-            self.statistics_tab.set_controller(controller)
-            if hasattr(self, 'plot_manager'):
-                self.statistics_tab.set_plot_manager(self.plot_manager)
+        # Pass controller and plot manager to all modular widgets
+        if hasattr(self, 'tab_widgets'):
+            for tab_name, tab_widget in self.tab_widgets.items():
+                tab_widget.set_controller(controller)
+                if hasattr(self, 'plot_manager'):
+                    tab_widget.set_plot_manager(self.plot_manager)
         
         self.logger.debug("Controller set for right panel")
     
@@ -87,9 +94,6 @@ class RightPanel:
         
         # Create tabs with matplotlib integration
         self._create_tabs()
-        
-        # Create demo plot for overview tab
-        self._create_demo_plot()
     
     def _create_tabs(self):
         """Create the analysis view tabs with matplotlib integration for Phase 5."""
@@ -112,47 +116,24 @@ class RightPanel:
         self._create_animation_tab()
     
     def _create_overview_tab(self):
-        """Create the overview tab with demo plot."""
-        overview_frame = ttk.Frame(self.notebook)
-        self.notebook.add(overview_frame, text="Overview")
+        """Create the overview tab using modular widget architecture."""
+        # Create backend for this tab
+        overview_backend = MatplotlibBackend()
         
-        # Create header frame
-        header_frame = ttk.Frame(overview_frame)
-        header_frame.pack(fill="x", padx=10, pady=10)
+        # Create the overview tab widget
+        self.overview_tab = OverviewTabWidget(self.notebook, overview_backend)
+        self.notebook.add(self.overview_tab, text="Overview")
         
-        # Welcome message
-        welcome_label = ttk.Label(
-            header_frame,
-            text="Data Analysis Application - Phase 5",
-            font=("TkDefaultFont", 12, "bold")
-        )
-        welcome_label.pack(anchor="w")
+        # Set dependencies
+        if hasattr(self, 'controller'):
+            self.overview_tab.set_controller(self.controller)
+        if hasattr(self, 'plot_manager'):
+            self.overview_tab.set_plot_manager(self.plot_manager)
         
-        # Feature description
-        feature_label = ttk.Label(
-            header_frame,
-            text="Extended matplotlib visualization capabilities - All Phase 5 plots enabled",
-            font=("TkDefaultFont", 10, "italic")
-        )
-        feature_label.pack(anchor="w", pady=(5, 0))
-        
-        # Create matplotlib canvas for demo plot
-        canvas_frame = ttk.Frame(overview_frame)
-        canvas_frame.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        self.canvas_widgets['overview'] = MatplotlibCanvas(canvas_frame)
-        self.canvas_widgets['overview'].frame.pack(fill="both", expand=True)
-        
-        # Instructions frame
-        instructions_frame = ttk.Frame(overview_frame)
-        instructions_frame.pack(fill="x", padx=10, pady=(0, 10))
-        
-        instructions_label = ttk.Label(
-            instructions_frame,
-            text="Load datasets using the File menu to enable additional visualization options.",
-            font=("TkDefaultFont", 9, "italic")
-        )
-        instructions_label.pack(anchor="w")
+        # Store reference in the tab widgets dict
+        if not hasattr(self, 'tab_widgets'):
+            self.tab_widgets = {}
+        self.tab_widgets['overview'] = self.overview_tab
     
     def _create_visualization_tab(self):
         """Create the main visualization tab with track counts and dataset selection."""
@@ -228,412 +209,116 @@ class RightPanel:
         self.tab_widgets['statistics'] = self.statistics_tab
     
     def _create_geospatial_tab(self):
-        """Create the geospatial analysis tab with enhanced controls."""
-        geo_frame = ttk.Frame(self.notebook)
-        self.notebook.add(geo_frame, text="Geospatial")
+        """Create the geospatial tab using modular widget architecture."""
+        # Create backend for this tab
+        geospatial_backend = MatplotlibBackend()
         
-        # Control panel with horizontal layout
-        control_frame = ttk.LabelFrame(geo_frame, text="Geospatial Plot Controls")
-        control_frame.pack(fill="x", padx=10, pady=10)
+        # Create the geospatial tab widget
+        self.geospatial_tab = GeospatialTabWidget(self.notebook, geospatial_backend)
+        self.notebook.add(self.geospatial_tab, text="Geospatial")
         
-        # Main horizontal container for all control sections
-        controls_container = ttk.Frame(control_frame)
-        controls_container.pack(fill="x", padx=5, pady=5)
+        # Set dependencies
+        if hasattr(self, 'controller'):
+            self.geospatial_tab.set_controller(self.controller)
+        if hasattr(self, 'plot_manager'):
+            self.geospatial_tab.set_plot_manager(self.plot_manager)
         
-        # Data selection frame (left section)
-        data_frame = ttk.LabelFrame(controls_container, text="Data Selection")
-        data_frame.pack(side="left", fill="y", padx=5)
-        
-        # Track selection
-        tracks_frame = ttk.Frame(data_frame)
-        tracks_frame.pack(fill="x", padx=5, pady=2)
-        
-        ttk.Label(tracks_frame, text="Tracks:").pack(side="left")
-        self.geo_tracks_var = tk.StringVar(value="all")
-        self.geo_tracks_combo = ttk.Combobox(tracks_frame, textvariable=self.geo_tracks_var,
-                                           values=["all", "some", "none"], state="readonly", width=10)
-        self.geo_tracks_combo.pack(side="left", padx=5)
-        
-        # Truth selection
-        truth_frame = ttk.Frame(data_frame)
-        truth_frame.pack(fill="x", padx=5, pady=2)
-        
-        ttk.Label(truth_frame, text="Truth:").pack(side="left")
-        self.geo_truth_var = tk.StringVar(value="all")
-        self.geo_truth_combo = ttk.Combobox(truth_frame, textvariable=self.geo_truth_var,
-                                          values=["all", "some", "none"], state="readonly", width=10)
-        self.geo_truth_combo.pack(side="left", padx=5)
-        
-        # Coordinate range frame (center section)
-        range_frame = ttk.LabelFrame(controls_container, text="Coordinate Range")
-        range_frame.pack(side="left", fill="y", padx=5)
-        
-        # Latitude range
-        lat_frame = ttk.Frame(range_frame)
-        lat_frame.pack(fill="x", padx=5, pady=2)
-        
-        ttk.Label(lat_frame, text="Latitude:").pack(side="left")
-        ttk.Label(lat_frame, text="Min:").pack(side="left", padx=(10, 2))
-        self.geo_lat_min_var = tk.DoubleVar(value=-1.0)  # Will be updated based on data
-        self.geo_lat_min_spin = ttk.Spinbox(lat_frame, from_=-90.0, to=90.0, increment=0.01,
-                                          textvariable=self.geo_lat_min_var, width=8, format="%.4f")
-        self.geo_lat_min_spin.pack(side="left", padx=2)
-        
-        ttk.Label(lat_frame, text="Max:").pack(side="left", padx=(10, 2))
-        self.geo_lat_max_var = tk.DoubleVar(value=1.0)  # Will be updated based on data
-        self.geo_lat_max_spin = ttk.Spinbox(lat_frame, from_=-90.0, to=90.0, increment=0.01,
-                                          textvariable=self.geo_lat_max_var, width=8, format="%.4f")
-        self.geo_lat_max_spin.pack(side="left", padx=2)
-        
-        # Longitude range
-        lon_frame = ttk.Frame(range_frame)
-        lon_frame.pack(fill="x", padx=5, pady=2)
-        
-        ttk.Label(lon_frame, text="Longitude:").pack(side="left")
-        ttk.Label(lon_frame, text="Min:").pack(side="left", padx=(10, 2))
-        self.geo_lon_min_var = tk.DoubleVar(value=-1.0)  # Will be updated based on data
-        self.geo_lon_min_spin = ttk.Spinbox(lon_frame, from_=-180.0, to=180.0, increment=0.01,
-                                          textvariable=self.geo_lon_min_var, width=8, format="%.4f")
-        self.geo_lon_min_spin.pack(side="left", padx=2)
-        
-        ttk.Label(lon_frame, text="Max:").pack(side="left", padx=(10, 2))
-        self.geo_lon_max_var = tk.DoubleVar(value=1.0)  # Will be updated based on data
-        self.geo_lon_max_spin = ttk.Spinbox(lon_frame, from_=-180.0, to=180.0, increment=0.01,
-                                          textvariable=self.geo_lon_max_var, width=8, format="%.4f")
-        self.geo_lon_max_spin.pack(side="left", padx=2)
-        
-        # Add Reset Range button to the right of longitude controls
-        ttk.Button(lon_frame, text="Reset Range", 
-                  command=self._reset_geo_range).pack(side="left", padx=(10, 2))
-        
-        # Add change handlers for auto-update
-        self.geo_lat_min_var.trace('w', self._on_geo_range_changed)
-        self.geo_lat_max_var.trace('w', self._on_geo_range_changed)
-        self.geo_lon_min_var.trace('w', self._on_geo_range_changed)
-        self.geo_lon_max_var.trace('w', self._on_geo_range_changed)
-        
-        # Initialize ranges based on data
-        self._initialize_coordinate_ranges()
-        
-        # Buttons frame (right section)
-        buttons_frame = ttk.LabelFrame(controls_container, text="Actions")
-        buttons_frame.pack(side="left", fill="y", padx=5)
-        
-        # Create matplotlib canvas
-        canvas_frame = ttk.Frame(geo_frame)
-        canvas_frame.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        self.canvas_widgets['geospatial'] = MatplotlibCanvas(canvas_frame)
-        self.canvas_widgets['geospatial'].frame.pack(fill="both", expand=True)
-        
-        # Set zoom callback for coordinate range updates
-        self.canvas_widgets['geospatial'].set_zoom_callback(self._on_geospatial_zoom)
+        # Store reference in the tab widgets dict
+        if not hasattr(self, 'tab_widgets'):
+            self.tab_widgets = {}
+        self.tab_widgets['geospatial'] = self.geospatial_tab
     
     def _create_error_analysis_tab(self):
-        """Create the North/East error analysis tab with track selection."""
-        error_frame = ttk.Frame(self.notebook)
-        self.notebook.add(error_frame, text="Error Analysis")
+        """Create the error analysis tab using modular widget architecture."""
+        # Create backend for this tab
+        error_analysis_backend = MatplotlibBackend()
         
-        # Control panel with horizontal layout
-        control_frame = ttk.LabelFrame(error_frame, text="Error Analysis Controls")
-        control_frame.pack(fill="x", padx=10, pady=10)
+        # Create the error analysis tab widget
+        self.error_analysis_tab = ErrorAnalysisTabWidget(self.notebook, error_analysis_backend)
+        self.notebook.add(self.error_analysis_tab, text="Error Analysis")
         
-        # Main horizontal container
-        controls_container = ttk.Frame(control_frame)
-        controls_container.pack(fill="x", padx=5, pady=5)
+        # Set dependencies
+        if hasattr(self, 'controller'):
+            self.error_analysis_tab.set_controller(self.controller)
+        if hasattr(self, 'plot_manager'):
+            self.error_analysis_tab.set_plot_manager(self.plot_manager)
         
-        # Track selection frame
-        track_frame = ttk.LabelFrame(controls_container, text="Track Selection")
-        track_frame.pack(side="left", fill="y", padx=5)
-        
-        # Track selection options
-        selection_frame = ttk.Frame(track_frame)
-        selection_frame.pack(fill="x", padx=5, pady=5)
-        
-        ttk.Label(selection_frame, text="Tracks:").pack(side="left")
-        self.error_tracks_var = tk.StringVar(value="all")
-        self.error_tracks_combo = ttk.Combobox(selection_frame, textvariable=self.error_tracks_var,
-                                             values=["all", "some"], state="readonly", width=10)
-        self.error_tracks_combo.pack(side="left", padx=5)
-        
-        # Track list frame (shown when "some" is selected)
-        self.error_track_list_frame = ttk.Frame(track_frame)
-        
-        # Bind selection change
-        self.error_tracks_combo.bind('<<ComboboxSelected>>', self._on_error_track_selection_changed)
-        
-        # Create matplotlib canvas
-        canvas_frame = ttk.Frame(error_frame)
-        canvas_frame.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        self.canvas_widgets['error_analysis'] = MatplotlibCanvas(canvas_frame)
-        self.canvas_widgets['error_analysis'].frame.pack(fill="both", expand=True)
+        # Store reference in the tab widgets dict
+        if not hasattr(self, 'tab_widgets'):
+            self.tab_widgets = {}
+        self.tab_widgets['error_analysis'] = self.error_analysis_tab
     
     def _create_rms_error_tab(self):
-        """Create the 3D RMS error tab with track selection."""
-        rms_frame = ttk.Frame(self.notebook)
-        self.notebook.add(rms_frame, text="RMS Error")
+        """Create the RMS error tab using modular widget architecture."""
+        # Create backend for this tab
+        rms_error_backend = MatplotlibBackend()
         
-        # Control panel with horizontal layout
-        control_frame = ttk.LabelFrame(rms_frame, text="RMS Error Controls")
-        control_frame.pack(fill="x", padx=10, pady=10)
+        # Create the RMS error tab widget
+        self.rms_error_tab = RMSErrorTabWidget(self.notebook, rms_error_backend)
+        self.notebook.add(self.rms_error_tab, text="RMS Error")
         
-        # Main horizontal container
-        controls_container = ttk.Frame(control_frame)
-        controls_container.pack(fill="x", padx=5, pady=5)
+        # Set dependencies
+        if hasattr(self, 'controller'):
+            self.rms_error_tab.set_controller(self.controller)
+        if hasattr(self, 'plot_manager'):
+            self.rms_error_tab.set_plot_manager(self.plot_manager)
         
-        # Track selection frame
-        track_frame = ttk.LabelFrame(controls_container, text="Track Selection")
-        track_frame.pack(side="left", fill="y", padx=5)
-        
-        # Track selection options
-        selection_frame = ttk.Frame(track_frame)
-        selection_frame.pack(fill="x", padx=5, pady=5)
-        
-        ttk.Label(selection_frame, text="Tracks:").pack(side="left")
-        self.rms_tracks_var = tk.StringVar(value="all")
-        self.rms_tracks_combo = ttk.Combobox(selection_frame, textvariable=self.rms_tracks_var,
-                                           values=["all", "some"], state="readonly", width=10)
-        self.rms_tracks_combo.pack(side="left", padx=5)
-        
-        # Track list frame (shown when "some" is selected)
-        self.rms_track_list_frame = ttk.Frame(track_frame)
-        
-        # Bind selection change
-        self.rms_tracks_combo.bind('<<ComboboxSelected>>', self._on_rms_track_selection_changed)
-        
-        # Create matplotlib canvas
-        canvas_frame = ttk.Frame(rms_frame)
-        canvas_frame.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        self.canvas_widgets['rms_error'] = MatplotlibCanvas(canvas_frame)
-        self.canvas_widgets['rms_error'].frame.pack(fill="both", expand=True)
+        # Store reference in the tab widgets dict
+        if not hasattr(self, 'tab_widgets'):
+            self.tab_widgets = {}
+        self.tab_widgets['rms_error_3d'] = self.rms_error_tab
     
     def _create_lifetime_tab(self):
-        """Create the track/truth lifetime tab."""
-        lifetime_frame = ttk.Frame(self.notebook)
-        self.notebook.add(lifetime_frame, text="Lifetime")
+        """Create the lifetime tab using modular widget architecture."""
+        # Create backend for this tab
+        lifetime_backend = MatplotlibBackend()
         
-        # Control panel
-        control_frame = ttk.LabelFrame(lifetime_frame, text="Lifetime Controls")
-        control_frame.pack(fill="x", padx=10, pady=10)
+        # Create the lifetime tab widget
+        self.lifetime_tab = LifetimeTabWidget(self.notebook, lifetime_backend)
+        self.notebook.add(self.lifetime_tab, text="Lifetime")
         
-        # Show lifetime plot button
-        # Options frame
-        options_frame = ttk.Frame(control_frame)
-        options_frame.pack(fill="x", padx=5, pady=5)
+        # Set dependencies
+        if hasattr(self, 'controller'):
+            self.lifetime_tab.set_controller(self.controller)
+        if hasattr(self, 'plot_manager'):
+            self.lifetime_tab.set_plot_manager(self.plot_manager)
         
-        self.lifetime_tracks_var = tk.BooleanVar(value=True)
-        self.lifetime_truth_var = tk.BooleanVar(value=False)
-        
-        tracks_cb = ttk.Checkbutton(
-            options_frame,
-            text="Include Tracks",
-            variable=self.lifetime_tracks_var
-        )
-        tracks_cb.pack(side="left", padx=5)
-        
-        truth_cb = ttk.Checkbutton(
-            options_frame,
-            text="Include Truth",
-            variable=self.lifetime_truth_var
-        )
-        truth_cb.pack(side="left", padx=5)
-        
-        # Create matplotlib canvas
-        canvas_frame = ttk.Frame(lifetime_frame)
-        canvas_frame.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        self.canvas_widgets['lifetime'] = MatplotlibCanvas(canvas_frame)
-        self.canvas_widgets['lifetime'].frame.pack(fill="both", expand=True)
+        # Store reference in the tab widgets dict
+        if not hasattr(self, 'tab_widgets'):
+            self.tab_widgets = {}
+        self.tab_widgets['lifetime'] = self.lifetime_tab
     
     def _create_animation_tab(self):
-        """Create the animation tab with enhanced controls."""
-        animation_frame = ttk.Frame(self.notebook)
-        self.notebook.add(animation_frame, text="Animation")
+        """Create the animation tab using modular widget architecture."""
+        # Create backend for this tab
+        animation_backend = MatplotlibBackend()
         
-        # Control panel with horizontal layout
-        control_frame = ttk.LabelFrame(animation_frame, text="Animation Controls")
-        control_frame.pack(fill="x", padx=10, pady=10)
+        # Create the animation tab widget
+        self.animation_tab = AnimationTabWidget(self.notebook, animation_backend)
+        self.notebook.add(self.animation_tab, text="Animation")
         
-        # Main horizontal container for all control sections
-        controls_container = ttk.Frame(control_frame)
-        controls_container.pack(fill="x", padx=5, pady=5)
+        # Set dependencies
+        if hasattr(self, 'controller'):
+            self.animation_tab.set_controller(self.controller)
+        if hasattr(self, 'plot_manager'):
+            self.animation_tab.set_plot_manager(self.plot_manager)
         
-        # Data selection frame (left section)
-        data_frame = ttk.LabelFrame(controls_container, text="Data Selection")
-        data_frame.pack(side="left", fill="y", padx=5)
-        
-        # Track selection
-        tracks_frame = ttk.Frame(data_frame)
-        tracks_frame.pack(fill="x", padx=5, pady=2)
-        
-        ttk.Label(tracks_frame, text="Tracks:").pack(side="left")
-        self.anim_tracks_var = tk.StringVar(value="all")
-        self.anim_tracks_combo = ttk.Combobox(tracks_frame, textvariable=self.anim_tracks_var,
-                                            values=["all", "some", "none"], state="readonly", width=10)
-        self.anim_tracks_combo.pack(side="left", padx=5)
-        
-        # Truth selection
-        truth_frame = ttk.Frame(data_frame)
-        truth_frame.pack(fill="x", padx=5, pady=2)
-        
-        ttk.Label(truth_frame, text="Truth:").pack(side="left")
-        self.anim_truth_var = tk.StringVar(value="all")
-        self.anim_truth_combo = ttk.Combobox(truth_frame, textvariable=self.anim_truth_var,
-                                           values=["all", "some", "none"], state="readonly", width=10)
-        self.anim_truth_combo.pack(side="left", padx=5)
-        
-        # Coordinate range frame (center section)
-        anim_range_frame = ttk.LabelFrame(controls_container, text="Coordinate Range")
-        anim_range_frame.pack(side="left", fill="y", padx=5)
-        
-        # Latitude range
-        anim_lat_frame = ttk.Frame(anim_range_frame)
-        anim_lat_frame.pack(fill="x", padx=5, pady=2)
-        
-        ttk.Label(anim_lat_frame, text="Latitude:").pack(side="left")
-        ttk.Label(anim_lat_frame, text="Min:").pack(side="left", padx=(10, 2))
-        self.anim_lat_min_var = tk.DoubleVar(value=-1.0)  # Will be updated based on data
-        self.anim_lat_min_spin = ttk.Spinbox(anim_lat_frame, from_=-90.0, to=90.0, increment=0.01,
-                                           textvariable=self.anim_lat_min_var, width=8, format="%.4f")
-        self.anim_lat_min_spin.pack(side="left", padx=2)
-        
-        ttk.Label(anim_lat_frame, text="Max:").pack(side="left", padx=(10, 2))
-        self.anim_lat_max_var = tk.DoubleVar(value=1.0)  # Will be updated based on data
-        self.anim_lat_max_spin = ttk.Spinbox(anim_lat_frame, from_=-90.0, to=90.0, increment=0.01,
-                                           textvariable=self.anim_lat_max_var, width=8, format="%.4f")
-        self.anim_lat_max_spin.pack(side="left", padx=2)
-        
-        # Longitude range
-        anim_lon_frame = ttk.Frame(anim_range_frame)
-        anim_lon_frame.pack(fill="x", padx=5, pady=2)
-        
-        ttk.Label(anim_lon_frame, text="Longitude:").pack(side="left")
-        ttk.Label(anim_lon_frame, text="Min:").pack(side="left", padx=(10, 2))
-        self.anim_lon_min_var = tk.DoubleVar(value=-1.0)  # Will be updated based on data
-        self.anim_lon_min_spin = ttk.Spinbox(anim_lon_frame, from_=-180.0, to=180.0, increment=0.01,
-                                           textvariable=self.anim_lon_min_var, width=8, format="%.4f")
-        self.anim_lon_min_spin.pack(side="left", padx=2)
-        
-        ttk.Label(anim_lon_frame, text="Max:").pack(side="left", padx=(10, 2))
-        self.anim_lon_max_var = tk.DoubleVar(value=1.0)  # Will be updated based on data
-        self.anim_lon_max_spin = ttk.Spinbox(anim_lon_frame, from_=-180.0, to=180.0, increment=0.01,
-                                           textvariable=self.anim_lon_max_var, width=8, format="%.4f")
-        self.anim_lon_max_spin.pack(side="left", padx=2)
-        
-        # Add Reset Range button to the right of longitude controls
-        ttk.Button(anim_lon_frame, text="Reset Range", 
-                  command=self._reset_animation_range).pack(side="left", padx=(10, 2))
-        
-        # Add change handlers for auto-update
-        self.anim_lat_min_var.trace('w', self._on_anim_range_changed)
-        self.anim_lat_max_var.trace('w', self._on_anim_range_changed)
-        self.anim_lon_min_var.trace('w', self._on_anim_range_changed)
-        self.anim_lon_max_var.trace('w', self._on_anim_range_changed)
-        
-        # Initialize ranges if this is called after geospatial tab (geospatial tab handles initial setup)
-        # This ensures both tabs have consistent initial values
-        
-        # Playback controls frame (right section)
-        playback_frame = ttk.LabelFrame(controls_container, text="Playback Controls")
-        playback_frame.pack(side="left", fill="y", padx=5)
-        
-        # Animation state variables
-        self.anim_playing = tk.BooleanVar(value=False)
-        self.anim_current_frame = tk.IntVar(value=0)
-        self.anim_speed = tk.DoubleVar(value=1.0)
-        
-        # Animation data and timing
-        self.anim_data = None
-        self.anim_timestamps = []
-        self.anim_max_frames = 0
-        self.anim_timer_id = None
-        self.base_interval = 100  # Base interval in milliseconds (0.1 seconds to match data)
-        
-        # First row - main playback controls
-        playback_row1 = ttk.Frame(playback_frame)
-        playback_row1.pack(fill="x", padx=5, pady=2)
-        
-        self.play_btn = ttk.Button(playback_row1, text="▶", width=3,
-                                  command=self._animation_play, state="disabled")
-        self.play_btn.pack(side="left", padx=2)
-        
-        self.pause_btn = ttk.Button(playback_row1, text="⏸", width=3,
-                                   command=self._animation_pause, state="disabled")
-        self.pause_btn.pack(side="left", padx=2)
-        
-        self.stop_btn = ttk.Button(playback_row1, text="⏹", width=3,
-                                  command=self._animation_stop, state="disabled")
-        self.stop_btn.pack(side="left", padx=2)
-        
-        self.step_back_btn = ttk.Button(playback_row1, text="⏮", width=3,
-                                       command=self._animation_step_back, state="disabled")
-        self.step_back_btn.pack(side="left", padx=2)
-        
-        self.step_forward_btn = ttk.Button(playback_row1, text="⏭", width=3,
-                                          command=self._animation_step_forward, state="disabled")
-        self.step_forward_btn.pack(side="left", padx=2)
-        
-        # Frame indicator
-        self.frame_label = ttk.Label(playback_row1, text="Frame: 0/0")
-        self.frame_label.pack(side="left", padx=(10, 2))
-
-        # Second row - speed control
-        playback_row2 = ttk.Frame(playback_frame)
-        playback_row2.pack(fill="x", padx=5, pady=2)
-        
-        ttk.Label(playback_row2, text="Speed:").pack(side="left")
-        self.speed_scale = ttk.Scale(playback_row2, from_=0.1, to=5.0, 
-                                    variable=self.anim_speed, orient="horizontal", length=80)
-        self.speed_scale.pack(side="left", padx=2)
-        
-        self.speed_label = ttk.Label(playback_row2, text="1.0x")
-        self.speed_label.pack(side="left", padx=2)
-        
-        # Bind speed change
-        self.anim_speed.trace('w', self._on_speed_changed)
-        
-        # Create matplotlib canvas
-        canvas_frame = ttk.Frame(animation_frame)
-        canvas_frame.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        self.canvas_widgets['animation'] = MatplotlibCanvas(canvas_frame)
-        self.canvas_widgets['animation'].frame.pack(fill="both", expand=True)
-        
-        # Set zoom callback for coordinate range updates
-        self.canvas_widgets['animation'].set_zoom_callback(self._on_animation_zoom)
+        # Store reference in the tab widgets dict
+        if not hasattr(self, 'tab_widgets'):
+            self.tab_widgets = {}
+        self.tab_widgets['animation'] = self.animation_tab
     
-    
-    def _create_demo_plot(self):
-        """Create a demo plot for the overview tab."""
-        if 'overview' in self.canvas_widgets:
-            # Create demo plot data
-            demo_data = {
-                'plot_type': 'demo'
-            }
-            self.canvas_widgets['overview'].create_simple_plot(demo_data)
-    
-    def _show_track_counts(self):
-        """Show track counts in the statistics tab."""
-        if not self.plot_manager or not self.controller:
+    def _show_animation_plot(self):
+        """Show animation plot in the animation tab."""
+        if not self.controller:
             return
         
         try:
-            # Use the new modular statistics tab if available
-            if hasattr(self, 'statistics_tab'):
-                self.statistics_tab.auto_update()
-            else:
-                # Fallback to old method for backward compatibility
-                app_state = self.controller.get_state()
-                plot_data = self.plot_manager.prepare_plot_data('track_counts', app_state)
-                
-                if 'error' not in plot_data and 'statistics' in self.canvas_widgets:
-                    canvas = self.canvas_widgets['statistics']
-                    canvas.create_simple_plot({'track_counts': plot_data['track_counts']})
+            if hasattr(self, 'animation_tab'):
+                self.animation_tab.auto_update()
             
         except Exception as e:
-            self.logger.error(f"Error showing track counts: {e}")
+            self.logger.error(f"Error showing animation plot: {e}")
     
     def _auto_update_geospatial_plot(self):
         """Automatically update the geospatial plot when focus dataset changes."""
@@ -721,8 +406,8 @@ class RightPanel:
                 
                 plot_data = self.plot_manager.prepare_plot_data('rms_error_3d', app_state, config)
                 
-                if 'error' not in plot_data and 'rms_error' in self.canvas_widgets:
-                    self.canvas_widgets['rms_error'].create_simple_plot(plot_data)
+                if 'error' not in plot_data and 'rms_error_3d' in self.canvas_widgets:
+                    self.canvas_widgets['rms_error_3d'].create_simple_plot(plot_data)
                     self.logger.debug(f"Auto-updated RMS plot for dataset: {focus_info.name}")
             
         except Exception as e:
@@ -829,61 +514,6 @@ class RightPanel:
         except Exception as e:
             self.logger.error(f"Error auto-updating statistics plot: {e}")
     
-    def _show_north_east_error_plot(self):
-        """Show North/East error plot in the error analysis tab."""
-        if not self.plot_manager or not self.controller:
-            return
-        
-        try:
-            app_state = self.controller.get_state()
-            plot_data = self.plot_manager.prepare_plot_data('north_east_error', app_state)
-            
-            if 'error' not in plot_data:
-                canvas = self.canvas_widgets['error_analysis']
-                canvas.create_simple_plot({'error_data': plot_data['error_data']})
-            
-        except Exception as e:
-            self.logger.error(f"Error showing North/East error plot: {e}")
-    
-    def _show_rms_error_plot(self):
-        """Show 3D RMS error plot in the RMS error tab."""
-        if not self.plot_manager or not self.controller:
-            return
-        
-        try:
-            app_state = self.controller.get_state()
-            plot_data = self.plot_manager.prepare_plot_data('rms_error_3d', app_state)
-            
-            if 'error' not in plot_data:
-                canvas = self.canvas_widgets['rms_error']
-                canvas.create_simple_plot({'rms_data': plot_data['rms_data']})
-            
-        except Exception as e:
-            self.logger.error(f"Error showing RMS error plot: {e}")
-    
-    def _show_lifetime_plot(self):
-        """Show lifetime plot in the lifetime tab."""
-        if not self.plot_manager or not self.controller:
-            return
-        
-        try:
-            app_state = self.controller.get_state()
-            
-            # Get plot configuration from UI
-            config = {
-                'include_tracks': self.lifetime_tracks_var.get(),
-                'include_truth': self.lifetime_truth_var.get()
-            }
-            
-            plot_data = self.plot_manager.prepare_plot_data('track_truth_lifetime', app_state, config)
-            
-            if 'error' not in plot_data:
-                canvas = self.canvas_widgets['lifetime']
-                canvas.create_simple_plot({'lifetime_data': plot_data['lifetime_data']})
-            
-        except Exception as e:
-            self.logger.error(f"Error showing lifetime plot: {e}")
-    
     def _on_tab_changed(self, event):
         """Handle tab change events."""
         try:
@@ -918,21 +548,24 @@ class RightPanel:
                 # Update coordinate ranges based on new data
                 self._initialize_coordinate_ranges()
                 
-                # Update track counts display
-                self._show_track_counts()
-                
                 # Check if focus dataset is loaded and auto-update all plots
                 focus_info = state.get_focus_dataset_info()
                 if focus_info and focus_info.status.value == "loaded":
                     # Initialize coordinate ranges based on the newly loaded data
-                    self._initialize_coordinate_ranges()
-                    
-                    self._auto_update_geospatial_plot()
-                    self._auto_update_error_plot()
-                    self._auto_update_rms_plot()
-                    self._auto_update_lifetime_plot()
-                    self._auto_update_animation_plot()
-                    self._auto_update_statistics_plot()
+                    self._initialize_coordinate_ranges()      
+
+                    if hasattr(self, 'statistics_tab'):
+                        self.statistics_tab.auto_update()
+                    if hasattr(self, 'geospatial_tab'):
+                        self.geospatial_tab.auto_update()
+                    if hasattr(self, 'error_analysis_tab'):
+                        self.error_analysis_tab.auto_update()
+                    if hasattr(self, 'rms_error_tab'):
+                        self.rms_error_tab.auto_update()
+                    if hasattr(self, 'lifetime_tab'):
+                        self.lifetime_tab.auto_update()
+                    if hasattr(self, 'animation_tab'):
+                        self.animation_tab.auto_update()
                 
                 self.logger.debug(f"Datasets changed, all plots refreshed")
             
@@ -946,12 +579,18 @@ class RightPanel:
                 # Auto-update all plots if focus dataset is loaded
                 focus_info = state.get_focus_dataset_info()
                 if focus_info and focus_info.status.value == "loaded":
-                    self._auto_update_geospatial_plot()
-                    self._auto_update_error_plot()
-                    self._auto_update_rms_plot()
-                    self._auto_update_lifetime_plot()
-                    self._auto_update_animation_plot()
-                    self._auto_update_statistics_plot()
+                    if hasattr(self, 'statistics_tab'):
+                        self.statistics_tab.auto_update()
+                    if hasattr(self, 'geospatial_tab'):
+                        self.geospatial_tab.auto_update()
+                    if hasattr(self, 'error_analysis_tab'):
+                        self.error_analysis_tab.auto_update()
+                    if hasattr(self, 'rms_error_tab'):
+                        self.rms_error_tab.auto_update()
+                    if hasattr(self, 'lifetime_tab'):
+                        self.lifetime_tab.auto_update()
+                    if hasattr(self, 'animation_tab'):
+                        self.animation_tab.auto_update()
                 
                 self.logger.debug(f"Focus changed, all plots refreshed")
             
@@ -989,29 +628,6 @@ class RightPanel:
                     break
         except Exception as e:
             self.logger.error(f"Error selecting tab: {e}")
-    
-    def export_current_plot(self):
-        """
-        Export the current tab's plot to a file (opens file dialog).
-        """
-        try:
-            current_tab = self.get_current_tab().lower()
-            if current_tab in self.canvas_widgets:
-                # Call export_plot without parameters (it opens a file dialog)
-                self.canvas_widgets[current_tab].export_plot()
-                self.logger.info(f"Exported plot from {current_tab} tab")
-        except Exception as e:
-            self.logger.error(f"Error exporting plot: {e}")
-    
-    def clear_current_plot(self):
-        """Clear the current tab's plot."""
-        try:
-            current_tab = self.get_current_tab().lower()
-            if current_tab in self.canvas_widgets:
-                self.canvas_widgets[current_tab].clear_plot()
-                self.logger.info(f"Cleared plot in {current_tab} tab")
-        except Exception as e:
-            self.logger.error(f"Error clearing plot: {e}")
     
     # Dataset Selection Methods
     def _refresh_dataset_selection(self):
@@ -1053,39 +669,6 @@ class RightPanel:
         """Deselect all datasets for track counts plot."""
         for var in self.dataset_selection_vars.values():
             var.set(False)
-    
-    def _show_track_counts_plot(self):
-        """Show the track counts plot with selected datasets."""
-        if not self.plot_manager or not self.controller:
-            return
-        
-        try:
-            # Get selected datasets
-            selected_datasets = [
-                name for name, var in self.dataset_selection_vars.items() 
-                if var.get()
-            ]
-            
-            if not selected_datasets:
-                self.logger.warning("No datasets selected for track counts plot")
-                return
-            
-            # Prepare plot configuration
-            plot_config = {'selected_datasets': selected_datasets}
-            
-            # Get application state and prepare data
-            app_state = self.controller.get_state()
-            plot_data = self.plot_manager.prepare_plot_data('track_counts', app_state, plot_config)
-            
-            if 'error' in plot_data:
-                self.logger.error(f"Error preparing track counts data: {plot_data['error']}")
-                return
-            
-            # Create the plot
-            self.canvas_widgets['visualization'].create_simple_plot(plot_data)
-            
-        except Exception as e:
-            self.logger.error(f"Error showing track counts plot: {e}")
     
     # Range Reset Methods
     def _reset_geo_range(self):
@@ -1559,123 +1142,123 @@ class RightPanel:
         self.logger.debug(f"Animation speed changed to {speed:.1f}x")
     
     # Enhanced Plot Methods with New Controls
-    def _show_lat_lon_plot(self):
-        """Show lat/lon plot with enhanced controls."""
-        if not self.plot_manager or not self.controller:
-            return
+    # def _show_lat_lon_plot(self):
+    #     """Show lat/lon plot with enhanced controls."""
+    #     if not self.plot_manager or not self.controller:
+    #         return
         
-        try:
-            # Get selection parameters
-            tracks_selection = self.geo_tracks_var.get()
-            truth_selection = self.geo_truth_var.get()
+    #     try:
+    #         # Get selection parameters
+    #         tracks_selection = self.geo_tracks_var.get()
+    #         truth_selection = self.geo_truth_var.get()
             
-            # Get coordinate ranges
-            lat_min = self.geo_lat_min_var.get()
-            lat_max = self.geo_lat_max_var.get()
-            lon_min = self.geo_lon_min_var.get()
-            lon_max = self.geo_lon_max_var.get()
+    #         # Get coordinate ranges
+    #         lat_min = self.geo_lat_min_var.get()
+    #         lat_max = self.geo_lat_max_var.get()
+    #         lon_min = self.geo_lon_min_var.get()
+    #         lon_max = self.geo_lon_max_var.get()
             
-            # Validate ranges
-            if lat_min >= lat_max or lon_min >= lon_max:
-                self.logger.error("Invalid coordinate ranges")
-                return
+    #         # Validate ranges
+    #         if lat_min >= lat_max or lon_min >= lon_max:
+    #             self.logger.error("Invalid coordinate ranges")
+    #             return
             
-            # Prepare plot configuration
-            plot_config = {
-                'tracks_selection': tracks_selection,
-                'truth_selection': truth_selection,
-                'lat_range': (lat_min, lat_max),
-                'lon_range': (lon_min, lon_max)
-            }
+    #         # Prepare plot configuration
+    #         plot_config = {
+    #             'tracks_selection': tracks_selection,
+    #             'truth_selection': truth_selection,
+    #             'lat_range': (lat_min, lat_max),
+    #             'lon_range': (lon_min, lon_max)
+    #         }
             
-            # Get application state and prepare data
-            app_state = self.controller.get_state()
-            plot_data = self.plot_manager.prepare_plot_data('lat_lon_scatter', app_state, plot_config)
+    #         # Get application state and prepare data
+    #         app_state = self.controller.get_state()
+    #         plot_data = self.plot_manager.prepare_plot_data('lat_lon_scatter', app_state, plot_config)
             
-            if 'error' in plot_data:
-                self.logger.error(f"Error preparing lat/lon data: {plot_data['error']}")
-                return
+    #         if 'error' in plot_data:
+    #             self.logger.error(f"Error preparing lat/lon data: {plot_data['error']}")
+    #             return
             
-            # Create the plot
-            self.canvas_widgets['geospatial'].create_simple_plot(plot_data)
+    #         # Create the plot
+    #         self.canvas_widgets['geospatial'].create_simple_plot(plot_data)
             
-        except Exception as e:
-            self.logger.error(f"Error showing lat/lon plot: {e}")
+    #     except Exception as e:
+    #         self.logger.error(f"Error showing lat/lon plot: {e}")
     
-    def _show_animation_plot(self):
-        """Show animation plot with enhanced controls."""
-        if not self.plot_manager or not self.controller:
-            return
+    # def _show_animation_plot(self):
+    #     """Show animation plot with enhanced controls."""
+    #     if not self.plot_manager or not self.controller:
+    #         return
         
-        try:
-            # Get selection parameters
-            tracks_selection = self.anim_tracks_var.get()
-            truth_selection = self.anim_truth_var.get()
+    #     try:
+    #         # Get selection parameters
+    #         tracks_selection = self.anim_tracks_var.get()
+    #         truth_selection = self.anim_truth_var.get()
             
-            # Get coordinate ranges
-            lat_min = self.anim_lat_min_var.get()
-            lat_max = self.anim_lat_max_var.get()
-            lon_min = self.anim_lon_min_var.get()
-            lon_max = self.anim_lon_max_var.get()
+    #         # Get coordinate ranges
+    #         lat_min = self.anim_lat_min_var.get()
+    #         lat_max = self.anim_lat_max_var.get()
+    #         lon_min = self.anim_lon_min_var.get()
+    #         lon_max = self.anim_lon_max_var.get()
             
-            # Validate ranges
-            if lat_min >= lat_max or lon_min >= lon_max:
-                self.logger.error("Invalid coordinate ranges")
-                return
+    #         # Validate ranges
+    #         if lat_min >= lat_max or lon_min >= lon_max:
+    #             self.logger.error("Invalid coordinate ranges")
+    #             return
             
-            # Prepare plot configuration
-            plot_config = {
-                'tracks_selection': tracks_selection,
-                'truth_selection': truth_selection,
-                'lat_range': (lat_min, lat_max),
-                'lon_range': (lon_min, lon_max)
-            }
+    #         # Prepare plot configuration
+    #         plot_config = {
+    #             'tracks_selection': tracks_selection,
+    #             'truth_selection': truth_selection,
+    #             'lat_range': (lat_min, lat_max),
+    #             'lon_range': (lon_min, lon_max)
+    #         }
             
-            # Get application state and prepare data
-            app_state = self.controller.get_state()
-            plot_data = self.plot_manager.prepare_plot_data('lat_lon_animation', app_state, plot_config)
+    #         # Get application state and prepare data
+    #         app_state = self.controller.get_state()
+    #         plot_data = self.plot_manager.prepare_plot_data('lat_lon_animation', app_state, plot_config)
             
-            if 'error' in plot_data:
-                self.logger.error(f"Error preparing animation data: {plot_data['error']}")
-                return
+    #         if 'error' in plot_data:
+    #             self.logger.error(f"Error preparing animation data: {plot_data['error']}")
+    #             return
             
-            # Store animation data and prepare timestamps
-            self.anim_data = plot_data.get('animation_data', {})
-            if self.anim_data:
-                self.anim_data['lat_range'] = (lat_min, lat_max)
-                self.anim_data['lon_range'] = (lon_min, lon_max)
+    #         # Store animation data and prepare timestamps
+    #         self.anim_data = plot_data.get('animation_data', {})
+    #         if self.anim_data:
+    #             self.anim_data['lat_range'] = (lat_min, lat_max)
+    #             self.anim_data['lon_range'] = (lon_min, lon_max)
                 
-                # Extract all timestamps and sort them
-                timestamps = set()
+    #             # Extract all timestamps and sort them
+    #             timestamps = set()
                 
-                if 'tracks' in self.anim_data and self.anim_data['tracks'] is not None:
-                    tracks_df = self.anim_data['tracks']
-                    if 'timestamp' in tracks_df.columns:
-                        timestamps.update(tracks_df['timestamp'])
+    #             if 'tracks' in self.anim_data and self.anim_data['tracks'] is not None:
+    #                 tracks_df = self.anim_data['tracks']
+    #                 if 'timestamp' in tracks_df.columns:
+    #                     timestamps.update(tracks_df['timestamp'])
                         
-                if 'truth' in self.anim_data and self.anim_data['truth'] is not None:
-                    truth_df = self.anim_data['truth']
-                    if 'timestamp' in truth_df.columns:
-                        timestamps.update(truth_df['timestamp'])
+    #             if 'truth' in self.anim_data and self.anim_data['truth'] is not None:
+    #                 truth_df = self.anim_data['truth']
+    #                 if 'timestamp' in truth_df.columns:
+    #                     timestamps.update(truth_df['timestamp'])
                 
-                self.anim_timestamps = sorted(list(timestamps))
-                self.anim_max_frames = len(self.anim_timestamps)
+    #             self.anim_timestamps = sorted(list(timestamps))
+    #             self.anim_max_frames = len(self.anim_timestamps)
                 
-                # Reset to first frame
-                self.anim_current_frame.set(0)
+    #             # Reset to first frame
+    #             self.anim_current_frame.set(0)
                 
-                # Show initial frame
-                self._update_animation_frame()
+    #             # Show initial frame
+    #             self._update_animation_frame()
                 
-                # Enable playback controls
-                self.play_btn.config(state="normal")
-                self.stop_btn.config(state="normal")
-                self.step_back_btn.config(state="normal")
-                self.step_forward_btn.config(state="normal")
+    #             # Enable playback controls
+    #             self.play_btn.config(state="normal")
+    #             self.stop_btn.config(state="normal")
+    #             self.step_back_btn.config(state="normal")
+    #             self.step_forward_btn.config(state="normal")
                 
-                self.logger.info(f"Animation prepared with {self.anim_max_frames} frames")
-            else:
-                self.logger.error("No animation data available")
+    #             self.logger.info(f"Animation prepared with {self.anim_max_frames} frames")
+    #         else:
+    #             self.logger.error("No animation data available")
             
-        except Exception as e:
-            self.logger.error(f"Error showing animation plot: {e}")
+    #     except Exception as e:
+    #         self.logger.error(f"Error showing animation plot: {e}")
