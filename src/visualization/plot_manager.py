@@ -422,27 +422,93 @@ class PlotManager:
         if not focus_dataset or focus_dataset.status.value != "loaded":
             return {'error': 'No loaded focus dataset available'}
         
-        animation_data = {'tracks': [], 'truth': [], 'time_range': {}}
+        animation_data = {'tracks': None, 'truth': None, 'time_range': {}}
+        all_lats = []
+        all_lons = []
         
-        # Prepare tracks data for animation
-        if (config.get('include_tracks', True) and 
+        # Process tracks data for animation
+        tracks_selection = config.get('tracks', "All")
+        if (tracks_selection != "None" and 
             focus_dataset.tracks_df is not None and not focus_dataset.tracks_df.empty):
+            
             tracks_df = focus_dataset.tracks_df.copy()
-            tracks_df = tracks_df.sort_values('timestamp')
-            animation_data['tracks'] = tracks_df
+            
+            # Filter tracks based on selection
+            if tracks_selection == "All":
+                # Include all tracks
+                filtered_tracks = tracks_df
+            elif isinstance(tracks_selection, list) and len(tracks_selection) > 0:
+                # Include specific track_ids
+                filtered_tracks = tracks_df[tracks_df['track_id'].isin(tracks_selection)]
+            else:
+                # Empty list or other values - include no tracks
+                filtered_tracks = tracks_df.iloc[0:0]  # Empty DataFrame with same structure
+            
+            if not filtered_tracks.empty:
+                filtered_tracks = filtered_tracks.sort_values('timestamp')
+                animation_data['tracks'] = filtered_tracks
+                
+                # Collect lat/lon for range calculation
+                if 'lat' in filtered_tracks.columns and 'lon' in filtered_tracks.columns:
+                    all_lats.extend(filtered_tracks['lat'].dropna().tolist())
+                    all_lons.extend(filtered_tracks['lon'].dropna().tolist())
         
-        # Prepare truth data for animation
-        if (config.get('include_truth', True) and 
+        # Process truth data for animation
+        truth_selection = config.get('truth', "All")
+        if (truth_selection != "None" and 
             focus_dataset.truth_df is not None and not focus_dataset.truth_df.empty):
+            
             truth_df = focus_dataset.truth_df.copy()
-            truth_df = truth_df.sort_values('timestamp')
-            animation_data['truth'] = truth_df
+            
+            # Filter truth based on selection
+            if truth_selection == "All":
+                # Include all truth
+                filtered_truth = truth_df
+            elif isinstance(truth_selection, list) and len(truth_selection) > 0:
+                # Include specific truth ids
+                filtered_truth = truth_df[truth_df['id'].isin(truth_selection)]
+            else:
+                # Empty list or other values - include no truth
+                filtered_truth = truth_df.iloc[0:0]  # Empty DataFrame with same structure
+            
+            if not filtered_truth.empty:
+                filtered_truth = filtered_truth.sort_values('timestamp')
+                animation_data['truth'] = filtered_truth
+                
+                # Collect lat/lon for range calculation
+                if 'lat' in filtered_truth.columns and 'lon' in filtered_truth.columns:
+                    all_lats.extend(filtered_truth['lat'].dropna().tolist())
+                    all_lons.extend(filtered_truth['lon'].dropna().tolist())
+        
+        # Calculate coordinate ranges from actual data
+        lat_range = None
+        lon_range = None
+        if len(all_lats) > 0 and len(all_lons) > 0:
+            lat_min, lat_max = min(all_lats), max(all_lats)
+            lon_min, lon_max = min(all_lons), max(all_lons)
+
+            # Make the bounding box square
+            lat_center = (lat_max + lat_min) / 2.0
+            lon_center = (lon_max + lon_min) / 2.0
+            
+            # Calculate ranges and take the larger one
+            lat_span = lat_max - lat_min if lat_max != lat_min else 0.02
+            lon_span = lon_max - lon_min if lon_max != lon_min else 0.02
+            
+            # Add 5% padding to the larger span
+            max_span = max(lat_span, lon_span)
+            padded_span = max_span * 1.05  # 5% padding
+            half_span = padded_span / 2.0
+            
+            # Create square ranges centered on the data
+            lat_range = (lat_center - half_span, lat_center + half_span)
+            lon_range = (lon_center - half_span, lon_center + half_span)
         
         # Calculate time range for animation
         all_times = []
-        if len(animation_data['tracks']) > 0:
+        if animation_data['tracks'] is not None and not animation_data['tracks'].empty:
             all_times.extend(animation_data['tracks']['timestamp'].tolist())
-        if len(animation_data['truth']) > 0:
+        if animation_data['truth'] is not None and not animation_data['truth'].empty:
             all_times.extend(animation_data['truth']['timestamp'].tolist())
         
         if all_times:
@@ -456,8 +522,8 @@ class PlotManager:
             'animation_data': animation_data,
             'title': f'Animated Lat/Lon - {focus_dataset.name}',
             'plot_type': 'animation',
-            'lat_range': config.get('lat_range'),
-            'lon_range': config.get('lon_range')
+            'lat_range': lat_range,
+            'lon_range': lon_range
         }
     
     def get_plot_info(self, plot_id: str) -> Optional[Dict[str, Any]]:

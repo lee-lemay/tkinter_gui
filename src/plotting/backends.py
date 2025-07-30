@@ -272,10 +272,11 @@ class MatplotlibBackend(PlotBackend):
                 self._plot_lifetime(ax, data, config)
             
             elif plot_type == 'lat_lon_animation':
-                self._plot_lat_lon_scatter(ax, data, config)
+                self._plot_animation(ax, data, config)
             
             elif plot_type == 'animation_frame':
-                self.create_animation_frame(ax, data, config)
+                self._plot_animation(ax, data, config)
+                #self.create_animation_frame(ax, data, config)
             else:
                 raise ValueError(f"Unsupported plot type: {plot_type}")
             
@@ -496,23 +497,19 @@ class MatplotlibBackend(PlotBackend):
         except Exception as e:
             self.logger.error(f"Error showing error plot: {e}")
     
-    
-    
     def _plot_animation(self, ax, data: Dict[str, Any], config: Dict[str, Any]):
         """Plot animated lat/lon data (static frame for now)."""
         animation_data = data['animation_data']
         
-        if (len(animation_data['tracks']) == 0 and len(animation_data['truth']) == 0):
+        if ((animation_data['tracks'] is None or animation_data['tracks'].empty) and 
+             (animation_data['truth'] is None or animation_data['truth'].empty)):
             ax.text(0.5, 0.5, 'No animation data available',
                    horizontalalignment='center', verticalalignment='center',
                    transform=ax.transAxes, fontsize=12, color='gray')
             return
-        
-        # For Phase 5, show static plot with trajectory paths
-        # (Animation controls will be added in enhanced version)
-        
+                
         # Plot track trajectories
-        if len(animation_data['tracks']) > 0:
+        if animation_data['tracks'] is not None and not animation_data['tracks'].empty:
             tracks_df = animation_data['tracks']
             for track_id in tracks_df['track_id'].unique():
                 track_data = tracks_df[tracks_df['track_id'] == track_id]
@@ -525,7 +522,7 @@ class MatplotlibBackend(PlotBackend):
                           c='red', s=100, marker='s', label='End' if track_id == tracks_df['track_id'].iloc[0] else "")
         
         # Plot truth trajectories
-        if len(animation_data['truth']) > 0:
+        if animation_data['truth'] is not None and not animation_data['truth'].empty:
             truth_df = animation_data['truth']
             for truth_id in truth_df['id'].unique():
                 truth_data = truth_df[truth_df['id'] == truth_id]
@@ -542,7 +539,7 @@ class MatplotlibBackend(PlotBackend):
             ax.set_xlim(lon_min, lon_max)
         
         # Styling
-        ax.set_title('Trajectory Animation (Static View)', fontsize=14, fontweight='bold')
+        ax.set_title(config['title'], fontsize=14, fontweight='bold')
         ax.set_xlabel('Longitude', fontsize=12)
         ax.set_ylabel('Latitude', fontsize=12)
         ax.grid(True, alpha=0.3)

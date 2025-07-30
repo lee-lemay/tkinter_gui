@@ -129,7 +129,7 @@ class DataSelectionWidget(ttk.LabelFrame):
         self.track_ids = track_ids
         
         # Add special options
-        self.tracks_listbox.insert(0, "All Tracks")
+        self.tracks_listbox.insert(0, "All")
         self.tracks_listbox.insert(1, "None")
         
         # Add track items
@@ -155,7 +155,7 @@ class DataSelectionWidget(ttk.LabelFrame):
         self.truth_ids = truth_ids
         
         # Add special options
-        self.truth_listbox.insert(0, "All Truth")
+        self.truth_listbox.insert(0, "All")
         self.truth_listbox.insert(1, "None")
         
         # Add truth items
@@ -177,7 +177,7 @@ class DataSelectionWidget(ttk.LabelFrame):
         selected_items = [self.tracks_listbox.get(i) for i in selected_indices]
         
         # Handle special selections
-        if "All Tracks" in selected_items:
+        if "All" in selected_items:
             # Select all tracks (clear current selection and select all individual tracks)
             self.tracks_listbox.selection_clear(0, tk.END)
             self.tracks_listbox.selection_set(0)  # "All Tracks"
@@ -212,7 +212,7 @@ class DataSelectionWidget(ttk.LabelFrame):
         selected_items = [self.truth_listbox.get(i) for i in selected_indices]
         
         # Handle special selections
-        if "All Truth" in selected_items:
+        if "All" in selected_items:
             # Select all truth (clear current selection and select all individual items)
             self.truth_listbox.selection_clear(0, tk.END)
             self.truth_listbox.selection_set(0)  # "All Truth"
@@ -277,6 +277,9 @@ class DataSelectionWidget(ttk.LabelFrame):
             # Update the UI
             self._populate_tracks(track_ids)
             self._populate_truth(truth_ids)
+
+            if self.tracks_callback:
+                self.tracks_callback(self.get_selected_tracks())
             
         except Exception as e:
             self.logger.error(f"Error updating data from focus: {e}")
@@ -302,7 +305,7 @@ class DataSelectionWidget(ttk.LabelFrame):
         selected_items = [self.tracks_listbox.get(i) for i in selected_indices]
         
         # Handle special selections
-        if "All Tracks" in selected_items:
+        if "All" in selected_items:
             return self.track_ids
         elif "None" in selected_items:
             return []
@@ -327,7 +330,7 @@ class DataSelectionWidget(ttk.LabelFrame):
         selected_items = [self.truth_listbox.get(i) for i in selected_indices]
         
         # Handle special selections
-        if "All Truth" in selected_items:
+        if "All" in selected_items:
             return self.truth_ids
         elif "None" in selected_items:
             return []
@@ -528,6 +531,11 @@ class CoordinateRangeWidget(ttk.LabelFrame):
         self.lon_min_var.set(lon_range[0])
         self.lon_max_var.set(lon_range[1])
 
+        self.lat_min_spin.set(f"{lat_range[0]:.4f}")
+        self.lat_max_spin.set(f"{lat_range[1]:.4f}")
+        self.lon_min_spin.set(f"{lon_range[0]:.4f}")
+        self.lon_max_spin.set(f"{lon_range[1]:.4f}")
+
 
 class TrackSelectionWidget(ttk.LabelFrame):
     """
@@ -712,6 +720,9 @@ class TrackSelectionWidget(ttk.LabelFrame):
             
             # Update the UI
             self._populate_tracks(track_ids)
+
+            if self.selection_callback:
+                self.selection_callback(self.get_selected_tracks())
             
         except Exception as e:
             self.logger.error(f"Error updating tracks from focus: {e}")
