@@ -241,3 +241,42 @@ class PlotTabWidget(ttk.Frame):
         )
         
         return has_data
+    
+    def on_focus_dataset_changed(self):
+        """
+        Handle focus dataset changes by updating all control widgets.
+        This should be called before auto_update() to ensure widgets have current data.
+        """
+        self.logger.debug("Handling focus dataset change")
+        
+        try:
+            # Update data selection widget to reflect new dataset
+            if hasattr(self, 'data_selection_widget') and self.data_selection_widget:
+                original_tracks_callback = self.data_selection_widget.tracks_callback
+                original_truth_callback = self.data_selection_widget.truth_callback
+                self.data_selection_widget.tracks_callback = None
+                self.data_selection_widget.truth_callback = None
+
+                self.data_selection_widget._update_data_from_focus()
+
+                self.data_selection_widget.tracks_callback = original_tracks_callback
+                self.data_selection_widget.truth_callback = original_truth_callback
+            
+            # Reset coordinate ranges to trigger recalculation from new data
+            if hasattr(self, 'coord_range_widget') and self.coord_range_widget:
+                # Temporarily disable callback to prevent multiple plot generations
+                original_callback = self.coord_range_widget.range_callback
+                self.coord_range_widget.range_callback = None
+                
+                # Reset to default values
+                self.coord_range_widget.set_ranges((-1.0, 1.0), (-1.0, 1.0))
+                self.lat_range = None
+                self.lon_range = None
+                
+                # Restore callback
+                self.coord_range_widget.range_callback = original_callback
+            
+            self.logger.debug("Focus dataset change handled successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Error handling focus dataset change: {e}")

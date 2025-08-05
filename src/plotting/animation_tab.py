@@ -1,7 +1,7 @@
 """
 Animation tab widget for the data analysis application.
 
-This module provides the Animation tab widget that extends the base PlotTabWidget
+This module provides the Animation tab widget that extends the base BaseGeospatialTabWidget
 with animation-specific functionality and controls.
 """
 
@@ -10,17 +10,17 @@ from tkinter import ttk
 from typing import List, Optional, Any, Dict
 import logging
 
-from .widgets import PlotTabWidget
+from .base_geospatial_tab import BaseGeospatialTabWidget
 from .backends import PlotBackend
-from .control_widgets import CoordinateRangeWidget, DataSelectionWidget, PlaybackControlWidget
+from .control_widgets import PlaybackControlWidget, CoordinateRangeWidget
 
 
-class AnimationTabWidget(PlotTabWidget):
+class AnimationTabWidget(BaseGeospatialTabWidget):
     """
     Animation tab widget for creating animated visualizations of track data.
     
-    This widget provides controls for animation playback, coordinate range selection,
-    and various animation visualization options.
+    This widget extends the base geospatial functionality with animation playback controls,
+    frame management, and time-based data filtering.
     """
     
     def __init__(self, parent: tk.Widget, backend: PlotBackend):
@@ -31,44 +31,42 @@ class AnimationTabWidget(PlotTabWidget):
             parent: Parent widget
             backend: Plot backend to use
         """        
-        # Animation state
+        # Animation-specific state
         self.is_playing = False
         self.current_frame = 0
         self.total_frames = 0
         self.animation_speed_var = tk.DoubleVar(value=1.0)
-        self.track_selection_var = ["All"]
-        self.truth_selection_var = ["All"]
+        self.animation_timestamps = []
+        self.original_animation_data = {}
         
-        # Initialize control widgets
-        self.coord_range_widget = None
+        # Animation control widgets
         self.playback_widget = None
         
         super().__init__(parent, backend, "Animation")
-                
-        self._show_initial_plot()
     
-    def _create_controls(self):
+    def _get_coordinate_widget_title(self) -> str:
+        """Get the title for the coordinate range widget."""
+        return "Animation Bounds"
+    
+    def _create_additional_controls(self):
         """Create animation-specific control widgets."""
-        # Add track and truth selection widget
-        self.data_selection_widget = DataSelectionWidget(self.control_frame)
-        self.data_selection_widget.pack(fill="x", padx=5, pady=5)
-        self.data_selection_widget.set_tracks_callback(self._on_track_data_selection_changed)
-        self.data_selection_widget.set_truth_callback(self._on_truth_data_selection_changed)
-        
+        # Create controls frame for horizontal layout
         controls_frame = ttk.Frame(self.control_frame)
         controls_frame.pack(fill="x", padx=5, pady=5)
-
-        # Add coordinate range widget
+        
+        # Move coordinate range widget to the controls frame
+        if self.coord_range_widget:
+            self.coord_range_widget.pack_forget()
+            self.coord_range_widget = None
+        
+        # Recreate coordinate range widget in the controls frame
         self.coord_range_widget = CoordinateRangeWidget(
             controls_frame,
-            title="Animation Bounds"
+            title=self._get_coordinate_widget_title()
         )
         self.coord_range_widget.pack(side="left", fill="both", expand=True, padx=(0, 5), pady=5)
         self.coord_range_widget.set_range_callback(self._on_coord_range_changed)
         self.coord_range_widget.set_reset_callback(self._on_reset_bounds)
-
-        # This will trigger when the matplotlib canvas is zoomed or panned
-        self._setup_zoom_callback_connection()
         
         # Add playback control widget
         self.playback_widget = PlaybackControlWidget(controls_frame)
@@ -78,41 +76,53 @@ class AnimationTabWidget(PlotTabWidget):
         self.playback_widget.set_stop_callback(self._on_stop)
         self.playback_widget.set_step_callback(self._on_step)
         self.playback_widget.set_speed_callback(self._on_speed_callback_changed)
-
-    def _propagate_controller_to_widgets(self):
-        """Propagate controller to child widgets."""
-        if hasattr(self, 'data_selection_widget') and self.controller:
-            if self.data_selection_widget:
-                self.data_selection_widget.set_controller(self.controller)
     
-    def _on_track_data_selection_changed(self, selection: List[str]):
-        """Handle data selection changes."""
-        self.logger.debug(f"Data selection changed: {selection}")
-        self.track_selection_var = selection
-        self._on_setup_animation()
+    def on_focus_dataset_changed(self):
+      """
+      Handle focus dataset changes for animation tab.
+      Clear animation state and update control widgets.
+      """
+      self.logger.debug("Handling focus dataset change for animation")
+      
+      try:
+          # Stop any current animation
+          if self.is_playing:
+              self.is_playing = False
+              self.current_frame = 0
+              
+              # Update playback controls
+              if self.playback_widget:
+                  self.playback_widget.play_btn.config(state="disabled")
+                  self.playback_widget.pause_btn.config(state="disabled")
+                  self.playback_widget.stop_btn.config(state="disabled")
+                  self.playback_widget.step_back_btn.config(state="disabled")
+                  self.playback_widget.step_forward_btn.config(state="disabled")
+                  self.playback_widget.set_total_frames(0)
+                  self.playback_widget.set_current_frame(0)
+          
+          # Clear animation data
+          self.total_frames = 0
+          self.animation_timestamps = []
+          self.original_animation_data = {}
+          
+          # Call parent method to update common widgets
+          super().on_focus_dataset_changed()
+          
+          self.logger.debug("Animation focus dataset change handled successfully")
+          
+      except Exception as e:
+          self.logger.error(f"Error handling animation focus dataset change: {e}")
     
-    def _on_truth_data_selection_changed(self, selection: List[str]):
-        """Handle data selection changes."""
-        self.logger.debug(f"Data selection changed: {selection}")
-        self.truth_selection_var = selection
-        self._on_setup_animation()
-    
-    def _on_coord_range_changed(self, ranges: Dict[str, tuple]):
-        """Handle coordinate range changes."""
-        self.logger.debug(f"Coordinate ranges changed: {ranges}")
-        self.lon_range = ranges.get('lon_range', (-1.0, 1.0))
-        self.lat_range = ranges.get('lat_range', (-1.0, 1.0))
-    
-        # Update the plot with new ranges if we have data
+    def _on_coordinate_ranges_updated(self):
+        """Handle coordinate range updates for animation."""
+        # Update current frame with new ranges if we have data
         if hasattr(self, 'original_animation_data') and self.original_animation_data:
             self._update_current_frame()
     
     def _on_reset_bounds(self):
-        """Handle reset bounds button click."""
+        """Handle reset bounds button click for animation."""
         self.logger.debug("Resetting animation bounds")
-        # Reset to default bounds and update animation
-        if self.coord_range_widget:
-            
+        if self.coord_range_widget and hasattr(self, 'original_animation_data'):
             if self.original_animation_data:
                 self.lat_range = self.original_animation_data.get('lat_range', (-1.0, 1.0))
                 self.lon_range = self.original_animation_data.get('lon_range', (-1.0, 1.0))
@@ -124,35 +134,26 @@ class AnimationTabWidget(PlotTabWidget):
             if self.is_playing:
                 self._update_current_frame()
     
-    def _setup_zoom_callback_connection(self):
-        """Setup connection between plot backend zoom events and coordinate range widget."""
-        if self.backend and hasattr(self.backend, 'set_zoom_callback'):
-            self.backend.set_zoom_callback(self._on_plot_zoom_changed)
-            self.logger.debug("Connected zoom callback to coordinate range widget")
-
-    def _on_plot_zoom_changed(self, xlim: tuple, ylim: tuple):
-        """Handle zoom/pan changes from the plot backend."""
+    def _generate_plot(self):
+        """Generate the animation plot (delegates to setup animation)."""
+        if self._plot_generation_locked:
+            self.logger.debug("Plot generation locked, marking as pending")
+            self._pending_plot_generation = True
+            return
+    
         try:
-            # Update coordinate range widget to reflect new plot limits
-            if self.coord_range_widget:
-                # Note: xlim is longitude, ylim is latitude for geographic plots
-                lon_range = xlim
-                lat_range = ylim
-                
-                # Temporarily disable the range callback to prevent circular updates
-                original_callback = self.coord_range_widget.range_callback
-                self.coord_range_widget.range_callback = None
-                
-                # Update the widget values
-                self.coord_range_widget.set_ranges(lat_range, lon_range)
-                
-                # Restore the callback
-                self.coord_range_widget.range_callback = original_callback
-                
-                self.logger.debug(f"Updated coordinate ranges from zoom: lat={lat_range}, lon={lon_range}")
-        except Exception as e:
-            self.logger.error(f"Error updating coordinate ranges from zoom: {e}")
-
+            self._plot_generation_locked = True
+            self._pending_plot_generation = False
+            self._on_setup_animation()
+            
+        finally:
+            self._plot_generation_locked = False
+            
+            # If another generation was requested while locked, execute it now
+            if self._pending_plot_generation:
+                self.logger.debug("Executing pending plot generation")
+                # Use after_idle to break the call stack and prevent deep recursion
+                self.after_idle(self._generate_plot)
     
     def _on_play(self):
         """Handle play button click."""
@@ -186,7 +187,6 @@ class AnimationTabWidget(PlotTabWidget):
     
     def _pause_animation(self):
         """Pause the animation playback."""
-        # Animation loop will check is_playing flag
         self.is_playing = False
         
         try:
@@ -209,8 +209,8 @@ class AnimationTabWidget(PlotTabWidget):
             self.playback_widget.play_btn.config(state="normal")
             self.playback_widget.pause_btn.config(state="disabled")
             self.playback_widget.stop_btn.config(state="disabled")
-            self.playback_widget.step_back_btn.config(state="normal")
-            self.playback_widget.step_forward_btn.config(state="normal")
+            self.playback_widget.step_back_btn.config(state="disabled")
+            self.playback_widget.step_forward_btn.config(state="disabled")
         except Exception as e:
             self.logger.error(f"Error updating playback controls: {e}")
         self._update_current_frame()
@@ -235,67 +235,16 @@ class AnimationTabWidget(PlotTabWidget):
         self.logger.debug(f"Animation speed changed to: {speed}")
         self.animation_speed_var.set(speed)
     
-    def _on_animation_settings(self):
-        """Handle animation settings button click."""
-        try:
-            # Create a simple settings dialog
-            settings_window = tk.Toplevel(self.winfo_toplevel())
-            settings_window.title("Animation Settings")
-            settings_window.geometry("300x200")
-            
-            # Add some basic settings
-            ttk.Label(settings_window, text="Frame Rate (FPS):").pack(pady=5)
-            fps_var = tk.IntVar(value=30)
-            fps_spin = ttk.Spinbox(settings_window, from_=1, to=60, textvariable=fps_var)
-            fps_spin.pack(pady=5)
-            
-            ttk.Label(settings_window, text="Resolution:").pack(pady=5)
-            res_var = tk.StringVar(value="1920x1080")
-            res_combo = ttk.Combobox(settings_window, textvariable=res_var,
-                                   values=["1920x1080", "1280x720", "800x600"])
-            res_combo.pack(pady=5)
-            
-            # OK button
-            ok_btn = ttk.Button(settings_window, text="OK", 
-                              command=settings_window.destroy)
-            ok_btn.pack(pady=20)
-            
-        except Exception as e:
-            self.logger.error(f"Error opening settings: {e}")
-    
     def _on_setup_animation(self):
         """Setup the animation with current settings."""
         try:
-
             if hasattr(self, 'data_selection_widget') and self.data_selection_widget:
-                # Get selected tracks and truth from the widget
-                # You'll need to implement methods in DataSelectionWidget to return these
                 self.track_selection_var = self.data_selection_widget.get_selected_tracks()
                 self.truth_selection_var = self.data_selection_widget.get_selected_truth()
 
-            config: Dict[str, Any] = {
-                'tracks': self.track_selection_var,  # Can be "All", "None", or list of track_ids
-                'truth': self.truth_selection_var     # Can be "All", "None", or list of truth ids
-            }
-            
-            # Get coordinate ranges from widget
-            coordinate_ranges = {}
-            if hasattr(self, 'coord_range_widget') and self.coord_range_widget:
-                ranges = self.coord_range_widget.get_ranges()
-                if ranges:
-                    coordinate_ranges = ranges
-
-            # Only include coordinate ranges in config if user has explicitly set them
-            if coordinate_ranges:
-                lat_range = coordinate_ranges.get('lat_range', None)
-                lon_range = coordinate_ranges.get('lon_range', None)
-                if lat_range is not None and lat_range != (-1.0, 1.0):
-                    config['lat_range'] = lat_range
-                if lon_range is not None and lon_range != (-1.0, 1.0):
-                    config['lon_range'] = lon_range
-
             plot_data = None
             if self.plot_manager and self.controller:
+                config = self._build_plot_config()
                 app_state = self.controller.get_state()
                 plot_data = self.plot_manager.prepare_plot_data('lat_lon_animation', app_state, config)
             
@@ -303,20 +252,15 @@ class AnimationTabWidget(PlotTabWidget):
             if plot_data and 'error' not in plot_data:
                 # Store original animation data for frame filtering
                 self.original_animation_data = {
-                    "tracks_df" : plot_data.get('tracks_df', None),
-                    "truth_df" : plot_data.get('truth_df', None),
+                    "tracks_df": plot_data.get('tracks_df', None),
+                    "truth_df": plot_data.get('truth_df', None),
                     "time_range": plot_data.get('time_range', {}),
                     "lat_range": plot_data.get('lat_range', (-1.0, 1.0)),
                     "lon_range": plot_data.get('lon_range', (-1.0, 1.0))
                 }
 
-                # Set coordinate ranges from calculated data
-                self.lat_range = plot_data.get('lat_range')
-                self.lon_range = plot_data.get('lon_range')
-                
-                if self.lat_range and self.lon_range and hasattr(self, 'coord_range_widget'):
-                    if self.coord_range_widget:
-                        self.coord_range_widget.set_ranges(self.lat_range, self.lon_range)
+                # Update coordinate ranges from calculated data
+                self._update_coordinate_ranges_from_plot_data(plot_data)
     
                 # Extract all unique timestamps for frame calculation
                 all_timestamps = set()
@@ -334,7 +278,7 @@ class AnimationTabWidget(PlotTabWidget):
                 # Sort timestamps for frame sequence
                 sorted_timestamps = sorted(list(all_timestamps))
                 self.total_frames = len(sorted_timestamps)
-                self.animation_timestamps = sorted_timestamps  # Store for frame filtering
+                self.animation_timestamps = sorted_timestamps
                 self.current_frame = 0
                 
                 # Update playback widget
@@ -382,8 +326,6 @@ class AnimationTabWidget(PlotTabWidget):
             
             current_timestamp = self.animation_timestamps[self.current_frame]
         
-            # Get the original animation data
-            # You'll need to store this from _on_setup_animation()
             if hasattr(self, 'original_animation_data'):
                 filtered_data = self._filter_data_to_timestamp(current_timestamp)
                 
@@ -423,20 +365,12 @@ class AnimationTabWidget(PlotTabWidget):
             filtered_data['truth_df'] = filtered_truth
         
         # Include coordinate ranges
-        if hasattr(self, 'coord_range_widget'):
-            if self.coord_range_widget:
-              ranges = self.coord_range_widget.get_ranges()
-              filtered_data['lat_range'] = ranges.get('lat_range')
-              filtered_data['lon_range'] = ranges.get('lon_range')
+        if hasattr(self, 'coord_range_widget') and self.coord_range_widget:
+            ranges = self.coord_range_widget.get_ranges()
+            filtered_data['lat_range'] = ranges.get('lat_range')
+            filtered_data['lon_range'] = ranges.get('lon_range')
         
         return filtered_data
-    
-    def auto_update(self):
-        """Auto-update the animation when data changes."""
-        self.logger.debug("Auto-updating animation")
-        # Stop current animation and setup new one
-        self.is_playing = False
-        self._on_setup_animation()
     
     def should_auto_update(self, focus_info: Any) -> bool:
         """
@@ -446,7 +380,3 @@ class AnimationTabWidget(PlotTabWidget):
         but only if not currently playing.
         """
         return not self.is_playing
-    
-    def _show_initial_plot(self):
-        """Show initial plot when tab is first displayed."""
-        self._on_setup_animation()

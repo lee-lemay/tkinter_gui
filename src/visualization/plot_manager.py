@@ -228,7 +228,7 @@ class PlotManager:
             tracks_df = focus_dataset.tracks_df.copy()
             
             # Filter tracks based on selection
-            if tracks_selection == "All":
+            if "All" in tracks_selection:
                 # Include all tracks
                 filtered_tracks = tracks_df
             elif isinstance(tracks_selection, list) and len(tracks_selection) > 0:
@@ -252,7 +252,7 @@ class PlotManager:
             truth_df = focus_dataset.truth_df.copy()
             
             # Filter truth based on selection
-            if truth_selection == "All":
+            if "All" in truth_selection:
                 # Include all truth
                 filtered_truth = truth_df
             elif isinstance(truth_selection, list) and len(truth_selection) > 0:

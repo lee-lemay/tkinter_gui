@@ -959,10 +959,10 @@ class PlaybackControlWidget(ttk.LabelFrame):
         # Enable/disable controls based on frame availability
         state = "normal" if total_frames > 0 else "disabled"
         self.play_btn.config(state=state)
-        self.pause_btn.config(state=state)
-        self.stop_btn.config(state=state)
-        self.step_back_btn.config(state=state)
-        self.step_forward_btn.config(state=state)
+        self.pause_btn.config(state="disabled")
+        self.stop_btn.config(state="disabled")
+        self.step_back_btn.config(state="disabled")
+        self.step_forward_btn.config(state="disabled")
     
     def set_current_frame(self, frame: int):
         """Set the current frame."""
