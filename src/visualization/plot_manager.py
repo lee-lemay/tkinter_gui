@@ -6,7 +6,8 @@ data preparation, and coordination between the business logic and visualization 
 """
 
 import logging
-from typing import Dict, List, Optional, Any
+from logging import config
+from typing import Dict, List, Optional, Any, Tuple
 from pathlib import Path
 
 from ..models.application_state import ApplicationState, DatasetInfo
@@ -201,6 +202,105 @@ class PlotManager:
             'plot_type': 'bar'
         }
     
+    def _filter_tracks_and_truth_data(self, focus_dataset, config: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Filter tracks and truth data based on selection criteria.
+        Returns filtered dataframes and coordinate bounds.
+        """        
+        
+        all_lats = []
+        all_lons = []
+
+        geodetic_bounds: Optional[Tuple[float, float]] = None
+        result: Dict[str, Any] = {
+            'tracks_df': None,
+            'truth_df': None,
+            'lat_range': geodetic_bounds,
+            'lon_range': geodetic_bounds
+        }
+
+        # Process tracks data for scatter plot
+        tracks_selection = config.get('tracks', "All")
+        if (tracks_selection != "None"  
+            and focus_dataset.tracks_df is not None 
+            and not focus_dataset.tracks_df.empty):
+            
+            tracks_df = focus_dataset.tracks_df.copy()
+            
+            # Filter tracks based on selection
+            if tracks_selection == "All":
+                # Include all tracks
+                filtered_tracks = tracks_df
+            elif isinstance(tracks_selection, list) and len(tracks_selection) > 0:
+                # Include specific track_ids
+                filtered_tracks = tracks_df[tracks_df['track_id'].isin(tracks_selection)]
+            else:
+                # Empty list or other values - include no tracks
+                filtered_tracks = tracks_df.iloc[0:0]  # Empty DataFrame with same structure
+            
+            if not filtered_tracks.empty and 'lat' in filtered_tracks.columns and 'lon' in filtered_tracks.columns:
+                result['tracks_df'] = filtered_tracks[['track_id', 'timestamp', 'lat', 'lon']].copy()
+                # Collect lat/lon for range calculation
+                all_lats.extend(filtered_tracks['lat'].dropna().tolist())
+                all_lons.extend(filtered_tracks['lon'].dropna().tolist())
+
+        # Process truth data for scatter plot
+        truth_selection = config.get('truth', "All")
+        if (truth_selection != "None" and 
+            focus_dataset.truth_df is not None and not focus_dataset.truth_df.empty):
+            
+            truth_df = focus_dataset.truth_df.copy()
+            
+            # Filter truth based on selection
+            if truth_selection == "All":
+                # Include all truth
+                filtered_truth = truth_df
+            elif isinstance(truth_selection, list) and len(truth_selection) > 0:
+                # Include specific truth ids
+                filtered_truth = truth_df[truth_df['id'].isin(truth_selection)]
+            else:
+                # Empty list or other values - include no truth
+                filtered_truth = truth_df.iloc[0:0]  # Empty DataFrame with same structure
+            
+            if not filtered_truth.empty:
+                result['truth_df'] = filtered_truth[['id', 'timestamp', 'lat', 'lon']].copy()
+                # Collect lat/lon for range calculation
+                all_lats.extend(filtered_truth['lat'].dropna().tolist())
+                all_lons.extend(filtered_truth['lon'].dropna().tolist())
+
+        if 'lat_range' in config and config['lat_range'] is not None:
+            result['lat_range'] = config['lat_range']
+        if 'lon_range' in config and config['lon_range'] is not None:
+            result['lon_range'] = config['lon_range']
+        if not result.get('lat_range') and not result.get('lon_range'):
+            # Calculate coordinate ranges from actual data (similar to animation function)
+            calculated_lat_range = None
+            calculated_lon_range = None
+            if len(all_lats) > 0 and len(all_lons) > 0:
+                lat_min, lat_max = min(all_lats), max(all_lats)
+                lon_min, lon_max = min(all_lons), max(all_lons)
+
+                # Make the bounding box square (same as animation)
+                lat_center = (lat_max + lat_min) / 2.0
+                lon_center = (lon_max + lon_min) / 2.0
+                
+                # Calculate ranges and take the larger one
+                lat_span = lat_max - lat_min if lat_max != lat_min else 0.02
+                lon_span = lon_max - lon_min if lon_max != lon_min else 0.02
+                
+                # Add 5% padding to the larger span
+                max_span = max(lat_span, lon_span)
+                padded_span = max_span * 1.05  # 5% padding
+                half_span = padded_span / 2.0
+                
+                # Create square ranges centered on the data
+                calculated_lat_range = (lat_center - half_span, lat_center + half_span)
+                calculated_lon_range = (lon_center - half_span, lon_center + half_span)
+                result['lat_range'] = calculated_lat_range
+                result['lon_range'] = calculated_lon_range
+        
+        return result
+    
     def _prepare_lat_lon_data(self, app_state: ApplicationState, 
                              config: Dict[str, Any]) -> Dict[str, Any]:
         """Prepare data for latitude/longitude scatter plot."""
@@ -209,32 +309,37 @@ class PlotManager:
         if not focus_dataset or focus_dataset.status.value != "loaded":
             return {'error': 'No loaded focus dataset available'}
         
-        lat_lon_data = {}
+        result = self._filter_tracks_and_truth_data(focus_dataset, config)
+
+        # Pass coordinate ranges from config (user-set ranges take precedence)
+        result['title'] = f'Lat/Lon Plot - {focus_dataset.name}'
         
-        # Include tracks if requested (default True)
-        if config.get('include_tracks', True) and focus_dataset.tracks_df is not None:
-            tracks_df = focus_dataset.tracks_df
-            if not tracks_df.empty and 'lat' in tracks_df.columns and 'lon' in tracks_df.columns:
-                lat_lon_data['tracks'] = tracks_df[['track_id', 'lat', 'lon']].copy()
+        return result
+    
+    def _prepare_animation_data(self, app_state: ApplicationState, 
+                               config: Dict[str, Any]) -> Dict[str, Any]:
+        """Prepare data for animated lat/lon plot."""        
+        focus_dataset = app_state.get_focus_dataset_info()
+
+        if not focus_dataset or focus_dataset.status.value != "loaded":
+            return {'error': 'No loaded focus dataset available'}
         
-        # Include truth if requested (default True)  
-        if config.get('include_truth', True) and focus_dataset.truth_df is not None:
-            truth_df = focus_dataset.truth_df
-            if not truth_df.empty and 'lat' in truth_df.columns and 'lon' in truth_df.columns:
-                lat_lon_data['truth'] = truth_df[['id', 'lat', 'lon']].copy()
+        result = self._filter_tracks_and_truth_data(focus_dataset, config)        
+        result['time_range'] = {}
         
-        # Pass coordinate ranges from config
-        result = {
-            'lat_lon_data': lat_lon_data,
-            'title': f'Lat/Lon Plot - {focus_dataset.name}',
-            'plot_type': 'scatter'
-        }
+        # Calculate time range for animation
+        all_times = []
+        if result['tracks_df'] is not None and not result['tracks_df'].empty:
+            all_times.extend(result['tracks_df']['timestamp'].tolist())
+        if result['truth_df'] is not None and not result['truth_df'].empty:
+            all_times.extend(result['truth_df']['timestamp'].tolist())
         
-        # Include range configuration if provided
-        if 'lat_range' in config:
-            result['lat_range'] = config['lat_range']
-        if 'lon_range' in config:
-            result['lon_range'] = config['lon_range']
+        if all_times:
+            result['time_range'] = {
+                'start': min(all_times),
+                'end': max(all_times),
+                'duration': (max(all_times) - min(all_times)).total_seconds()
+            }
         
         return result
     
@@ -413,117 +518,6 @@ class PlotManager:
             'lifetime_data': lifetime_data,
             'title': f'Track/Truth Lifetime - {focus_dataset.name}',
             'plot_type': 'lifetime'
-        }
-    
-    def _prepare_animation_data(self, app_state: ApplicationState, 
-                               config: Dict[str, Any]) -> Dict[str, Any]:
-        """Prepare data for animated lat/lon plot."""
-        focus_dataset = app_state.get_focus_dataset_info()
-        if not focus_dataset or focus_dataset.status.value != "loaded":
-            return {'error': 'No loaded focus dataset available'}
-        
-        animation_data = {'tracks': None, 'truth': None, 'time_range': {}}
-        all_lats = []
-        all_lons = []
-        
-        # Process tracks data for animation
-        tracks_selection = config.get('tracks', "All")
-        if (tracks_selection != "None" and 
-            focus_dataset.tracks_df is not None and not focus_dataset.tracks_df.empty):
-            
-            tracks_df = focus_dataset.tracks_df.copy()
-            
-            # Filter tracks based on selection
-            if tracks_selection == "All":
-                # Include all tracks
-                filtered_tracks = tracks_df
-            elif isinstance(tracks_selection, list) and len(tracks_selection) > 0:
-                # Include specific track_ids
-                filtered_tracks = tracks_df[tracks_df['track_id'].isin(tracks_selection)]
-            else:
-                # Empty list or other values - include no tracks
-                filtered_tracks = tracks_df.iloc[0:0]  # Empty DataFrame with same structure
-            
-            if not filtered_tracks.empty:
-                filtered_tracks = filtered_tracks.sort_values('timestamp')
-                animation_data['tracks'] = filtered_tracks
-                
-                # Collect lat/lon for range calculation
-                if 'lat' in filtered_tracks.columns and 'lon' in filtered_tracks.columns:
-                    all_lats.extend(filtered_tracks['lat'].dropna().tolist())
-                    all_lons.extend(filtered_tracks['lon'].dropna().tolist())
-        
-        # Process truth data for animation
-        truth_selection = config.get('truth', "All")
-        if (truth_selection != "None" and 
-            focus_dataset.truth_df is not None and not focus_dataset.truth_df.empty):
-            
-            truth_df = focus_dataset.truth_df.copy()
-            
-            # Filter truth based on selection
-            if truth_selection == "All":
-                # Include all truth
-                filtered_truth = truth_df
-            elif isinstance(truth_selection, list) and len(truth_selection) > 0:
-                # Include specific truth ids
-                filtered_truth = truth_df[truth_df['id'].isin(truth_selection)]
-            else:
-                # Empty list or other values - include no truth
-                filtered_truth = truth_df.iloc[0:0]  # Empty DataFrame with same structure
-            
-            if not filtered_truth.empty:
-                filtered_truth = filtered_truth.sort_values('timestamp')
-                animation_data['truth'] = filtered_truth
-                
-                # Collect lat/lon for range calculation
-                if 'lat' in filtered_truth.columns and 'lon' in filtered_truth.columns:
-                    all_lats.extend(filtered_truth['lat'].dropna().tolist())
-                    all_lons.extend(filtered_truth['lon'].dropna().tolist())
-        
-        # Calculate coordinate ranges from actual data
-        lat_range = None
-        lon_range = None
-        if len(all_lats) > 0 and len(all_lons) > 0:
-            lat_min, lat_max = min(all_lats), max(all_lats)
-            lon_min, lon_max = min(all_lons), max(all_lons)
-
-            # Make the bounding box square
-            lat_center = (lat_max + lat_min) / 2.0
-            lon_center = (lon_max + lon_min) / 2.0
-            
-            # Calculate ranges and take the larger one
-            lat_span = lat_max - lat_min if lat_max != lat_min else 0.02
-            lon_span = lon_max - lon_min if lon_max != lon_min else 0.02
-            
-            # Add 5% padding to the larger span
-            max_span = max(lat_span, lon_span)
-            padded_span = max_span * 1.05  # 5% padding
-            half_span = padded_span / 2.0
-            
-            # Create square ranges centered on the data
-            lat_range = (lat_center - half_span, lat_center + half_span)
-            lon_range = (lon_center - half_span, lon_center + half_span)
-        
-        # Calculate time range for animation
-        all_times = []
-        if animation_data['tracks'] is not None and not animation_data['tracks'].empty:
-            all_times.extend(animation_data['tracks']['timestamp'].tolist())
-        if animation_data['truth'] is not None and not animation_data['truth'].empty:
-            all_times.extend(animation_data['truth']['timestamp'].tolist())
-        
-        if all_times:
-            animation_data['time_range'] = {
-                'start': min(all_times),
-                'end': max(all_times),
-                'duration': (max(all_times) - min(all_times)).total_seconds()
-            }
-        
-        return {
-            'animation_data': animation_data,
-            'title': f'Animated Lat/Lon - {focus_dataset.name}',
-            'plot_type': 'animation',
-            'lat_range': lat_range,
-            'lon_range': lon_range
         }
     
     def get_plot_info(self, plot_id: str) -> Optional[Dict[str, Any]]:

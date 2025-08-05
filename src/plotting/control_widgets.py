@@ -280,6 +280,9 @@ class DataSelectionWidget(ttk.LabelFrame):
 
             if self.tracks_callback:
                 self.tracks_callback(self.get_selected_tracks())
+
+            if self.truth_callback:
+                self.truth_callback(self.get_selected_truth())
             
         except Exception as e:
             self.logger.error(f"Error updating data from focus: {e}")

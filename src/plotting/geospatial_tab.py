@@ -7,7 +7,7 @@ with geospatial-specific functionality and controls.
 
 import tkinter as tk
 from tkinter import ttk, messagebox
-from typing import Optional, Any, Dict
+from typing import List, Optional, Any, Dict
 import logging
 
 from .widgets import PlotTabWidget
@@ -37,6 +37,8 @@ class GeospatialTabWidget(PlotTabWidget):
         self.show_grid_var = tk.BooleanVar(value=True)
         self.show_coastlines_var = tk.BooleanVar(value=True)
         self.projection_var = tk.StringVar(value="mercator")
+        self.track_selection_var = ["All"]
+        self.truth_selection_var = ["All"]
         
         super().__init__(parent, backend, "Geospatial")
         
@@ -49,8 +51,8 @@ class GeospatialTabWidget(PlotTabWidget):
         # Add data selection widget
         self.data_selection_widget = DataSelectionWidget(self.control_frame)
         self.data_selection_widget.pack(fill="x", padx=5, pady=5)
-        self.data_selection_widget.set_tracks_callback(self._on_data_selection_changed)
-        self.data_selection_widget.set_truth_callback(self._on_data_selection_changed)
+        self.data_selection_widget.set_tracks_callback(self._on_track_data_selection_changed)
+        self.data_selection_widget.set_truth_callback(self._on_truth_data_selection_changed)
         
         # Add coordinate range widget
         self.coord_range_widget = CoordinateRangeWidget(
@@ -60,6 +62,9 @@ class GeospatialTabWidget(PlotTabWidget):
         self.coord_range_widget.pack(fill="x", padx=5, pady=5)
         self.coord_range_widget.set_range_callback(self._on_coord_range_changed)
         self.coord_range_widget.set_reset_callback(self._on_reset_bounds)
+
+        # This will trigger when the matplotlib canvas is zoomed or panned
+        self._setup_zoom_callback_connection()
 
     def _propagate_controller_to_widgets(self):
         """Propagate controller to child widgets."""
@@ -74,73 +79,107 @@ class GeospatialTabWidget(PlotTabWidget):
             self._on_generate_plot()
         except Exception as e:
             self.logger.debug(f"Could not show initial plot: {e}")
-    
-    def _on_data_selection_changed(self, selection: str):
-        """Handle data selection changes."""
-        self.logger.debug(f"Data selection changed: {selection}")
+    def _on_track_data_selection_changed(self, selection: List[str]):
+        """Handle track selection changes."""
+        self.track_selection_var = selection
+        self._on_generate_plot()
+
+    def _on_truth_data_selection_changed(self, selection: List[str]):
+        """Handle truth selection changes."""
+        self.truth_selection_var = selection
         self._on_generate_plot()
     
     def _on_coord_range_changed(self, ranges: Dict[str, tuple]):
         """Handle coordinate range changes."""
         self.logger.debug(f"Coordinate ranges changed: {ranges}")
-        self._on_generate_plot()
-    
+        # When user manually changes ranges, regenerate plot with new ranges
+        lat_range = ranges.get('lat_range', None)
+        lon_range = ranges.get('lon_range', None)
+        if lat_range and lon_range:
+            if lat_range != self.lat_range or lon_range != self.lon_range:
+                self.lat_range = lat_range
+                self.lon_range = lon_range
+                self._on_generate_plot()
+
     def _on_reset_bounds(self):
         """Handle reset bounds button click."""
         self.logger.debug("Resetting geographic bounds")
-        # Reset to default bounds
-        self.coord_range_widget.set_ranges((-1.0, 1.0), (-1.0, 1.0))
+        # Reset by clearing current ranges and regenerating plot 
+        # This will cause the plot manager to recalculate bounds from data
+        if hasattr(self, 'coord_range_widget') and self.coord_range_widget:
+            # Set to default values temporarily to trigger recalculation
+            self.coord_range_widget.set_ranges((-1.0, 1.0), (-1.0, 1.0))
         self._on_generate_plot()
     
-    def _calculate_data_bounds(self, dataset_info: Any) -> Optional[Dict[str, tuple]]:
-        """Calculate geographic bounds from dataset."""
+    def _setup_zoom_callback_connection(self):
+        """Setup connection between plot backend zoom events and coordinate range widget."""
+        if self.backend and hasattr(self.backend, 'set_zoom_callback'):
+            self.backend.set_zoom_callback(self._on_plot_zoom_changed)
+            self.logger.debug("Connected zoom callback to coordinate range widget")
+
+    def _on_plot_zoom_changed(self, xlim: tuple, ylim: tuple):
+        """Handle zoom/pan changes from the plot backend."""
         try:
-            lat_values = []
-            lon_values = []
-            
-            # Collect coordinates from available datasets
-            for df_name in ['tracks_df', 'truth_df', 'detections_df']:
-                df = getattr(dataset_info, df_name, None)
-                if df is not None and not df.empty:
-                    # Look for common coordinate column names
-                    lat_cols = [col for col in df.columns if 'lat' in col.lower()]
-                    lon_cols = [col for col in df.columns if 'lon' in col.lower()]
-                    
-                    if lat_cols and lon_cols:
-                        lat_values.extend(df[lat_cols[0]].dropna().tolist())
-                        lon_values.extend(df[lon_cols[0]].dropna().tolist())
-            
-            if lat_values and lon_values:
-                # Add some padding around the data bounds
-                lat_min, lat_max = min(lat_values), max(lat_values)
-                lon_min, lon_max = min(lon_values), max(lon_values)
+            # Update coordinate range widget to reflect new plot limits
+            if self.coord_range_widget:
+                # Note: xlim is longitude, ylim is latitude for geographic plots
+                lon_range = xlim
+                lat_range = ylim
                 
-                lat_padding = (lat_max - lat_min) * 0.1
-                lon_padding = (lon_max - lon_min) * 0.1
+                # Temporarily disable the range callback to prevent circular updates
+                original_callback = self.coord_range_widget.range_callback
+                self.coord_range_widget.range_callback = None
                 
-                return {
-                    'lat_range': (lat_min - lat_padding, lat_max + lat_padding),
-                    'lon_range': (lon_min - lon_padding, lon_max + lon_padding)
-                }
-            
+                # Update the widget values
+                self.coord_range_widget.set_ranges(lat_range, lon_range)
+                
+                # Restore the callback
+                self.coord_range_widget.range_callback = original_callback
+                
+                self.logger.debug(f"Updated coordinate ranges from zoom: lat={lat_range}, lon={lon_range}")
         except Exception as e:
-            self.logger.error(f"Error calculating data bounds: {e}")
-        
-        return None
+            self.logger.error(f"Error updating coordinate ranges from zoom: {e}")
     
     def _on_generate_plot(self):
         """Generate the geospatial plot."""
-        try:
-            # Try to get data through multiple paths for maximum compatibility
+        try:            
             plot_data = None
             
-            # Path 1: Use plot_manager if available (legacy compatibility)
             if self.plot_manager and self.controller:
-                 app_state = self.controller.get_state()
-                 plot_data = self.plot_manager.prepare_plot_data('lat_lon_scatter', app_state)
+                # Get coordinate ranges from widget
+                coordinate_ranges = {}
+                if hasattr(self, 'coord_range_widget') and self.coord_range_widget:
+                    ranges = self.coord_range_widget.get_ranges()
+                    if ranges:
+                        coordinate_ranges = ranges
+                
+                # Build config with track/truth selections and coordinate ranges
+                config = {
+                    'tracks': getattr(self, 'track_selection_var', ["All"]),
+                    'truth': getattr(self, 'truth_selection_var', ["All"]),
+                }
+                
+                # Only include coordinate ranges in config if user has explicitly set them
+                if coordinate_ranges:
+                    lat_range = coordinate_ranges.get('lat_range', None)
+                    lon_range = coordinate_ranges.get('lon_range', None)
+                    if lat_range is not None and lat_range != (-1.0, 1.0):
+                        config['lat_range'] = lat_range
+                    if lon_range is not None and lon_range != (-1.0, 1.0):
+                        config['lon_range'] = lon_range
+                app_state = self.controller.get_state()
+                plot_data = self.plot_manager.prepare_plot_data('lat_lon_scatter', app_state, config)
             
             # Update the plot if we have data
             if plot_data and 'error' not in plot_data:
+                # Set coordinate ranges from calculated data bounds
+                self.lat_range = plot_data.get('lat_range')
+                self.lon_range = plot_data.get('lon_range')                
+                
+                if self.lat_range and self.lon_range and hasattr(self, 'coord_range_widget'):
+                    if self.coord_range_widget:
+                        self.coord_range_widget.set_ranges(self.lat_range, self.lon_range)
+
                 config = {
                     'title': f'Geospatial {self.map_type_var.get().title()} Map',
                     'show_grid': self.show_grid_var.get()

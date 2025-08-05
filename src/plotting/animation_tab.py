@@ -44,8 +44,7 @@ class AnimationTabWidget(PlotTabWidget):
         self.playback_widget = None
         
         super().__init__(parent, backend, "Animation")
-        
-        # Show initial plot following template pattern
+                
         self._show_initial_plot()
     
     def _create_controls(self):
@@ -67,6 +66,9 @@ class AnimationTabWidget(PlotTabWidget):
         self.coord_range_widget.pack(side="left", fill="both", expand=True, padx=(0, 5), pady=5)
         self.coord_range_widget.set_range_callback(self._on_coord_range_changed)
         self.coord_range_widget.set_reset_callback(self._on_reset_bounds)
+
+        # This will trigger when the matplotlib canvas is zoomed or panned
+        self._setup_zoom_callback_connection()
         
         # Add playback control widget
         self.playback_widget = PlaybackControlWidget(controls_frame)
@@ -75,7 +77,7 @@ class AnimationTabWidget(PlotTabWidget):
         self.playback_widget.set_pause_callback(self._on_pause)
         self.playback_widget.set_stop_callback(self._on_stop)
         self.playback_widget.set_step_callback(self._on_step)
-        self.playback_widget.set_speed_callback(self._on_speed_callback_changed)   
+        self.playback_widget.set_speed_callback(self._on_speed_callback_changed)
 
     def _propagate_controller_to_widgets(self):
         """Propagate controller to child widgets."""
@@ -101,6 +103,10 @@ class AnimationTabWidget(PlotTabWidget):
         self.lon_range = ranges.get('lon_range', (-1.0, 1.0))
         self.lat_range = ranges.get('lat_range', (-1.0, 1.0))
     
+        # Update the plot with new ranges if we have data
+        if hasattr(self, 'original_animation_data') and self.original_animation_data:
+            self._update_current_frame()
+    
     def _on_reset_bounds(self):
         """Handle reset bounds button click."""
         self.logger.debug("Resetting animation bounds")
@@ -117,6 +123,36 @@ class AnimationTabWidget(PlotTabWidget):
             self.coord_range_widget.set_ranges(self.lat_range, self.lon_range)
             if self.is_playing:
                 self._update_current_frame()
+    
+    def _setup_zoom_callback_connection(self):
+        """Setup connection between plot backend zoom events and coordinate range widget."""
+        if self.backend and hasattr(self.backend, 'set_zoom_callback'):
+            self.backend.set_zoom_callback(self._on_plot_zoom_changed)
+            self.logger.debug("Connected zoom callback to coordinate range widget")
+
+    def _on_plot_zoom_changed(self, xlim: tuple, ylim: tuple):
+        """Handle zoom/pan changes from the plot backend."""
+        try:
+            # Update coordinate range widget to reflect new plot limits
+            if self.coord_range_widget:
+                # Note: xlim is longitude, ylim is latitude for geographic plots
+                lon_range = xlim
+                lat_range = ylim
+                
+                # Temporarily disable the range callback to prevent circular updates
+                original_callback = self.coord_range_widget.range_callback
+                self.coord_range_widget.range_callback = None
+                
+                # Update the widget values
+                self.coord_range_widget.set_ranges(lat_range, lon_range)
+                
+                # Restore the callback
+                self.coord_range_widget.range_callback = original_callback
+                
+                self.logger.debug(f"Updated coordinate ranges from zoom: lat={lat_range}, lon={lon_range}")
+        except Exception as e:
+            self.logger.error(f"Error updating coordinate ranges from zoom: {e}")
+
     
     def _on_play(self):
         """Handle play button click."""
@@ -237,10 +273,26 @@ class AnimationTabWidget(PlotTabWidget):
                 self.track_selection_var = self.data_selection_widget.get_selected_tracks()
                 self.truth_selection_var = self.data_selection_widget.get_selected_truth()
 
-            config = {
+            config: Dict[str, Any] = {
                 'tracks': self.track_selection_var,  # Can be "All", "None", or list of track_ids
                 'truth': self.truth_selection_var     # Can be "All", "None", or list of truth ids
             }
+            
+            # Get coordinate ranges from widget
+            coordinate_ranges = {}
+            if hasattr(self, 'coord_range_widget') and self.coord_range_widget:
+                ranges = self.coord_range_widget.get_ranges()
+                if ranges:
+                    coordinate_ranges = ranges
+
+            # Only include coordinate ranges in config if user has explicitly set them
+            if coordinate_ranges:
+                lat_range = coordinate_ranges.get('lat_range', None)
+                lon_range = coordinate_ranges.get('lon_range', None)
+                if lat_range is not None and lat_range != (-1.0, 1.0):
+                    config['lat_range'] = lat_range
+                if lon_range is not None and lon_range != (-1.0, 1.0):
+                    config['lon_range'] = lon_range
 
             plot_data = None
             if self.plot_manager and self.controller:
@@ -250,7 +302,13 @@ class AnimationTabWidget(PlotTabWidget):
             # Setup the animation if we have data
             if plot_data and 'error' not in plot_data:
                 # Store original animation data for frame filtering
-                self.original_animation_data = plot_data.get('animation_data', {})
+                self.original_animation_data = {
+                    "tracks_df" : plot_data.get('tracks_df', None),
+                    "truth_df" : plot_data.get('truth_df', None),
+                    "time_range": plot_data.get('time_range', {}),
+                    "lat_range": plot_data.get('lat_range', (-1.0, 1.0)),
+                    "lon_range": plot_data.get('lon_range', (-1.0, 1.0))
+                }
 
                 # Set coordinate ranges from calculated data
                 self.lat_range = plot_data.get('lat_range')
@@ -259,19 +317,17 @@ class AnimationTabWidget(PlotTabWidget):
                 if self.lat_range and self.lon_range and hasattr(self, 'coord_range_widget'):
                     if self.coord_range_widget:
                         self.coord_range_widget.set_ranges(self.lat_range, self.lon_range)
-
-                animation_data = plot_data.get('animation_data', {})
     
                 # Extract all unique timestamps for frame calculation
                 all_timestamps = set()
                 
-                if animation_data.get('tracks') is not None:
-                    tracks_df = animation_data['tracks']
+                if plot_data.get('tracks_df') is not None:
+                    tracks_df = plot_data['tracks_df']
                     if 'timestamp' in tracks_df.columns:
                         all_timestamps.update(tracks_df['timestamp'])
-                
-                if animation_data.get('truth') is not None:
-                    truth_df = animation_data['truth']
+
+                if plot_data.get('truth_df') is not None:
+                    truth_df = plot_data['truth_df']
                     if 'timestamp' in truth_df.columns:
                         all_timestamps.update(truth_df['timestamp'])
                 
@@ -346,27 +402,25 @@ class AnimationTabWidget(PlotTabWidget):
     def _filter_data_to_timestamp(self, current_timestamp):
         """Filter animation data to show only data up to current timestamp."""
         filtered_data = {
-            'animation_data': {
-                'tracks': None,
-                'truth': None,
-                'time_range': self.original_animation_data.get('time_range', {}),
-                'lat_range': self.lat_range,
-                'lon_range': self.lon_range
-            },
+            'tracks_df': None,
+            'truth_df': None,
+            'time_range': self.original_animation_data.get('time_range', {}),
+            'lat_range': self.lat_range,
+            'lon_range': self.lon_range,
             'current_time': current_timestamp
         }
         
         # Filter tracks
-        if self.original_animation_data.get('tracks') is not None:
-            tracks_df = self.original_animation_data['tracks']
+        if self.original_animation_data.get('tracks_df') is not None:
+            tracks_df = self.original_animation_data['tracks_df']
             filtered_tracks = tracks_df[tracks_df['timestamp'] <= current_timestamp]
-            filtered_data['animation_data']['tracks'] = filtered_tracks
+            filtered_data['tracks_df'] = filtered_tracks
         
         # Filter truth
-        if self.original_animation_data.get('truth') is not None:
-            truth_df = self.original_animation_data['truth']
+        if self.original_animation_data.get('truth_df') is not None:
+            truth_df = self.original_animation_data['truth_df']
             filtered_truth = truth_df[truth_df['timestamp'] <= current_timestamp]
-            filtered_data['animation_data']['truth'] = filtered_truth
+            filtered_data['truth_df'] = filtered_truth
         
         # Include coordinate ranges
         if hasattr(self, 'coord_range_widget'):

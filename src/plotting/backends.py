@@ -10,6 +10,8 @@ from typing import Dict, Any, Optional, Callable, Tuple
 import logging
 import pandas as pd
 
+from src import data
+
 
 class PlotResult:
     """Represents the result of a plot operation."""
@@ -259,9 +261,6 @@ class MatplotlibBackend(PlotBackend):
             if plot_type == 'track_counts':
                 self._plot_track_counts(ax, data, config)
             
-            elif plot_type == 'lat_lon_scatter':
-                self._plot_lat_lon_scatter(ax, data, config)
-            
             elif plot_type == 'north_east_error':
                 self._plot_north_east_error(ax, data, config)
             
@@ -270,13 +269,18 @@ class MatplotlibBackend(PlotBackend):
             
             elif plot_type == 'track_truth_lifetime':
                 self._plot_lifetime(ax, data, config)
-            
+                
+            elif plot_type == 'lat_lon_scatter':
+                config['plot_mode'] = 'scatter'
+                self._plot_geospatial_data(ax, data, config)
+
             elif plot_type == 'lat_lon_animation':
-                self._plot_animation(ax, data, config)
-            
+                config['plot_mode'] = 'trajectory'
+                self._plot_geospatial_data(ax, data, config)
+
             elif plot_type == 'animation_frame':
-                self._plot_animation(ax, data, config)
-                #self.create_animation_frame(ax, data, config)
+                config['plot_mode'] = 'trajectory'
+                self._plot_geospatial_data(ax, data, config)
             else:
                 raise ValueError(f"Unsupported plot type: {plot_type}")
             
@@ -368,8 +372,7 @@ class MatplotlibBackend(PlotBackend):
         # Format y-axis to show error values nicely
         from matplotlib.ticker import FuncFormatter
         ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x:.2f}'))
-    
-    
+
     def _plot_lifetime(self, ax, data: Dict[str, Any], config: Dict[str, Any]):
         """Plot track/truth lifetime data."""
         lifetime_data = data['lifetime_data']
@@ -402,46 +405,139 @@ class MatplotlibBackend(PlotBackend):
         ax.grid(True, alpha=0.3)
         if len(labels) > 1:
             ax.legend()
+            
+    def _plot_tracks_data(self, ax, tracks_df: pd.DataFrame, plot_mode: str, config: Dict[str, Any]):
+        """Plot tracks data in specified mode."""
+        
+        if plot_mode == 'scatter':
+            # Scatter mode: plot individual points grouped by track ID
+            for track_id, track_data in tracks_df.groupby('track_id'):
+                lat = track_data['lat'].values
+                lon = track_data['lon'].values
+                if len(lat) != len(lon):
+                    raise ValueError(f"Track {track_id} has mismatched lat/lon lengths")
+                ax.scatter(lon, lat, s=10, alpha=0.5, label=f'Track {track_id}')
+        
+        elif plot_mode == 'trajectory':
+            # Trajectory mode: plot connected lines with markers
+            for track_id in tracks_df['track_id'].unique():
+                track_data = tracks_df[tracks_df['track_id'] == track_id]
+                ax.plot(track_data['lon'], track_data['lat'], 
+                    'b-', alpha=0.6, linewidth=2, 
+                    label='Track Trajectory' if track_id == tracks_df['track_id'].iloc[0] else "")
+                
+                # Mark start and end points
+                ax.scatter(track_data['lon'].iloc[0], track_data['lat'].iloc[0], 
+                        c='green', s=100, marker='o', 
+                        label='Start' if track_id == tracks_df['track_id'].iloc[0] else "")
+                ax.scatter(track_data['lon'].iloc[-1], track_data['lat'].iloc[-1], 
+                        c='red', s=100, marker='s', 
+                        label='End' if track_id == tracks_df['track_id'].iloc[0] else "")
+                
+    def _plot_truth_data(self, ax, truth_df: pd.DataFrame, plot_mode: str, config: Dict[str, Any]):
+        """Plot truth data in specified mode."""
+        
+        if plot_mode == 'scatter':
+            # Scatter mode: plot individual points grouped by truth ID
+            for truth_id, truth_data in truth_df.groupby('id'):
+                lat = truth_data['lat'].values
+                lon = truth_data['lon'].values
+                if len(lat) != len(lon):
+                    raise ValueError("Truth data has mismatched lat/lon lengths")
+                ax.scatter(lon, lat, s=10, alpha=0.5, c='red', label=f'Truth {truth_id}')
+        
+        elif plot_mode == 'trajectory':
+            # Trajectory mode: plot connected lines
+            for truth_id in truth_df['id'].unique():
+                truth_data = truth_df[truth_df['id'] == truth_id]
+                ax.plot(truth_data['lon'], truth_data['lat'], 
+                    'r--', alpha=0.6, linewidth=2, 
+                    label='Truth Trajectory' if truth_id == truth_df['id'].iloc[0] else "")
+    
+    def _apply_geospatial_styling(self, ax, config: Dict[str, Any]):
+        """Apply common styling to geospatial plots."""
+        
+        # Set axis labels and title
+        ax.set_xlabel('Longitude', fontsize=12)
+        ax.set_ylabel('Latitude', fontsize=12)
+        ax.set_title(config.get('title', 'Geospatial Plot'), fontsize=14, fontweight='bold')
+        
+        # Set grid if specified
+        if config.get('show_grid', True):
+            ax.grid(True, alpha=0.3)
+        
+        # Add legend
+        ax.legend()
+        
+        # Set equal aspect ratio for geographic data
+        ax.set_aspect('equal', adjustable='box')
+        
+        # Fix axis formatting for geographic coordinates
+        ax.ticklabel_format(style='plain', useOffset=False)
+        
+        # Format ticks for small coordinate ranges
+        xlim = ax.get_xlim()
+        ylim = ax.get_ylim()
+        
+        if abs(xlim[1] - xlim[0]) < 1.0:  # Less than 1 degree
+            import numpy as np
+            x_ticks = np.linspace(xlim[0], xlim[1], 6)
+            ax.set_xticks(x_ticks)
+            ax.set_xticklabels([f'{tick:.4f}' for tick in x_ticks])
+        
+        if abs(ylim[1] - ylim[0]) < 1.0:  # Less than 1 degree
+            import numpy as np
+            y_ticks = np.linspace(ylim[0], ylim[1], 6)
+            ax.set_yticks(y_ticks)
+            ax.set_yticklabels([f'{tick:.4f}' for tick in y_ticks])
 
-    def _plot_lat_lon_scatter(self, ax, data: Dict[str, Any], config: Dict[str, Any]):
-        """Plot latitude/longitude scatter plot."""
-        try:
-            # Check if 'lat_lon_data' is in the data dataframe
-            if 'lat_lon_data' in data:
-                lat_lon_data = data['lat_lon_data']
-                # Check if 'tracks' is in lat_lon_data
-                if 'tracks' in lat_lon_data:
-                    tracks_df = lat_lon_data['tracks']
-                    if isinstance(tracks_df, pd.DataFrame):
-                        # iterate through the track ids and add lat lon for each of them to the plot
-                        for track_id, track_data in tracks_df.groupby('track_id'):
-                            lat = track_data['lat'].values
-                            lon = track_data['lon'].values
-                            if len(lat) != len(lon):
-                                raise ValueError(f"Track {track_id} has mismatched lat/lon lengths")
-                            ax.scatter(lon, lat, s=10, alpha=0.5, label=f'Track {track_id}')
-                # Check if 'truth' is in lat_lon_data
-                if 'truth' in lat_lon_data:
-                    truth_df = lat_lon_data['truth']
-                    if isinstance(truth_df, pd.DataFrame):
-                        for truth_id, truth_data in truth_df.groupby('id'):
-                            lat = truth_data['lat'].values
-                            lon = truth_data['lon'].values
-                            if len(lat) != len(lon):
-                                raise ValueError("Truth data has mismatched lat/lon lengths")
-                            ax.scatter(lon, lat, s=10, alpha=0.5, c='red', label='Truth {truth_id}')
-            
-            # Set axis labels and title
-            ax.set_xlabel('Longitude', fontsize=12)
-            ax.set_ylabel('Latitude', fontsize=12)
-            ax.set_title(config.get('title', 'Geospatial Scatter Plot'), fontsize=14, fontweight='bold')
-            
-            # Set grid if specified
-            if config.get('show_grid', True):
-                ax.grid(True, alpha=0.3)
-            
-        except Exception as e:
-            self.logger.error(f"Error plotting lat/lon scatter: {e}")
+    def _plot_geospatial_data(self, ax, data: Dict[str, Any], config: Dict[str, Any]):
+        """Plot geospatial data in either scatter or trajectory mode."""
+        
+        # Determine plot mode from config or data structure
+        plot_mode = config.get('plot_mode', 'auto')
+        
+        # Auto-detect mode if not specified
+        if plot_mode == 'auto':
+            if 'animation_data' in data:
+                plot_mode = 'trajectory'
+            else:
+                plot_mode = 'scatter'
+        
+        # Extract data based on structure
+        tracks_df = data.get('tracks_df', None)
+        truth_df = data.get('truth_df', None)
+        
+        # Check for empty data
+        if ((tracks_df is None or tracks_df.empty) and 
+            (truth_df is None or truth_df.empty)):
+            ax.text(0.5, 0.5, 'No geospatial data available',
+                horizontalalignment='center', verticalalignment='center',
+                transform=ax.transAxes, fontsize=12, color='gray')
+            return
+        
+        # Plot tracks
+        if tracks_df is not None and not tracks_df.empty:
+            self._plot_tracks_data(ax, tracks_df, plot_mode, config)
+        
+        # Plot truth
+        if truth_df is not None and not truth_df.empty:
+            self._plot_truth_data(ax, truth_df, plot_mode, config)
+        
+        # Check for ranges in data (animation format)
+        lat_range = data.get('lat_range', None)
+        lon_range = data.get('lon_range', None)
+        
+        # Apply ranges if found
+        if lat_range is not None:
+            ax.set_ylim(lat_range)
+        
+        if lon_range is not None:
+            ax.set_xlim(lon_range)
+        
+        # Apply styling
+        self._apply_geospatial_styling(ax, config)
+
     
     def _plot_track_counts(self, ax, data: Dict[str, Any], config: Dict[str, Any]):
         """Plot track counts."""
@@ -496,177 +592,6 @@ class MatplotlibBackend(PlotBackend):
                 self.canvas.draw()
         except Exception as e:
             self.logger.error(f"Error showing error plot: {e}")
-    
-    def _plot_animation(self, ax, data: Dict[str, Any], config: Dict[str, Any]):
-        """Plot animated lat/lon data (static frame for now)."""
-        animation_data = data['animation_data']
-        
-        if ((animation_data['tracks'] is None or animation_data['tracks'].empty) and 
-             (animation_data['truth'] is None or animation_data['truth'].empty)):
-            ax.text(0.5, 0.5, 'No animation data available',
-                   horizontalalignment='center', verticalalignment='center',
-                   transform=ax.transAxes, fontsize=12, color='gray')
-            return
-                
-        # Plot track trajectories
-        if animation_data['tracks'] is not None and not animation_data['tracks'].empty:
-            tracks_df = animation_data['tracks']
-            for track_id in tracks_df['track_id'].unique():
-                track_data = tracks_df[tracks_df['track_id'] == track_id]
-                ax.plot(track_data['lon'], track_data['lat'], 
-                       'b-', alpha=0.6, linewidth=2, label='Track Trajectory' if track_id == tracks_df['track_id'].iloc[0] else "")
-                # Mark start and end points
-                ax.scatter(track_data['lon'].iloc[0], track_data['lat'].iloc[0], 
-                          c='green', s=100, marker='o', label='Start' if track_id == tracks_df['track_id'].iloc[0] else "")
-                ax.scatter(track_data['lon'].iloc[-1], track_data['lat'].iloc[-1], 
-                          c='red', s=100, marker='s', label='End' if track_id == tracks_df['track_id'].iloc[0] else "")
-        
-        # Plot truth trajectories
-        if animation_data['truth'] is not None and not animation_data['truth'].empty:
-            truth_df = animation_data['truth']
-            for truth_id in truth_df['id'].unique():
-                truth_data = truth_df[truth_df['id'] == truth_id]
-                ax.plot(truth_data['lon'], truth_data['lat'], 
-                       'r--', alpha=0.6, linewidth=2, label='Truth Trajectory' if truth_id == truth_df['id'].iloc[0] else "")
-        
-        # Apply coordinate ranges if provided
-        if 'lat_range' in data and data['lat_range'] is not None:
-            lat_min, lat_max = data['lat_range']
-            ax.set_ylim(lat_min, lat_max)
-        
-        if 'lon_range' in data and data['lon_range'] is not None:
-            lon_min, lon_max = data['lon_range']
-            ax.set_xlim(lon_min, lon_max)
-        
-        # Styling
-        ax.set_title(config['title'], fontsize=14, fontweight='bold')
-        ax.set_xlabel('Longitude', fontsize=12)
-        ax.set_ylabel('Latitude', fontsize=12)
-        ax.grid(True, alpha=0.3)
-        ax.legend()
-        ax.set_aspect('equal', adjustable='box')
-        
-        # Fix axis formatting for geographic coordinates (same as geospatial plot)
-        # Disable scientific notation and offset formatting
-        ax.ticklabel_format(style='plain', useOffset=False)
-    
-        # For very small coordinate ranges, use fixed decimal places
-        from matplotlib.ticker import FixedFormatter, FixedLocator
-        import numpy as np
-        
-        # Get current axis limits
-        xlim = ax.get_xlim()
-        ylim = ax.get_ylim()
-        
-        # If the range is small (typical for local geographic data), format nicely
-        if abs(xlim[1] - xlim[0]) < 1.0:  # Less than 1 degree
-            # Create custom tick formatters for longitude
-            x_ticks = np.linspace(xlim[0], xlim[1], 6)
-            ax.set_xticks(x_ticks)
-            ax.set_xticklabels([f'{tick:.4f}' for tick in x_ticks])
-        
-        if abs(ylim[1] - ylim[0]) < 1.0:  # Less than 1 degree
-            # Create custom tick formatters for latitude
-            y_ticks = np.linspace(ylim[0], ylim[1], 6)
-            ax.set_yticks(y_ticks)
-            ax.set_yticklabels([f'{tick:.4f}' for tick in y_ticks])
-    
-    def create_animation_frame(self, ax, data: Dict[str, Any], config: Dict[str, Any]):
-        """Create an animation frame showing data up to current timestamp."""
-        try:
-            filtered_data   = data
-            current_frame   = config["current_frame"]
-            total_frames      = config["total_frames"]
-            
-            # Clear the current plot and create new axes
-            self.figure.clear()
-            ax = self.figure.add_subplot(111)
-            
-            # Get coordinate ranges
-            lat_range = filtered_data.get('lat_range')
-            lon_range = filtered_data.get('lon_range')
-            current_time = filtered_data.get('current_time')
-            
-            # Plot tracks data up to current time
-            if filtered_data.get('tracks') is not None and len(filtered_data['tracks']) > 0:
-                tracks_df = filtered_data['tracks']
-                for track_id in tracks_df['track_id'].unique():
-                    track_data = tracks_df[tracks_df['track_id'] == track_id]
-                    if len(track_data) > 0:
-                        # Plot trajectory path
-                        ax.plot(track_data['lon'], track_data['lat'], 
-                               'b-', alpha=0.7, linewidth=2, 
-                               label='Track' if track_id == tracks_df['track_id'].iloc[0] else "")
-                        # Mark current position
-                        current_pos = track_data.iloc[-1]
-                        ax.scatter(current_pos['lon'], current_pos['lat'], 
-                                  c='blue', s=100, marker='o', zorder=5)
-            
-            # Plot truth data up to current time
-            if filtered_data.get('truth') is not None and len(filtered_data['truth']) > 0:
-                truth_df = filtered_data['truth']
-                for truth_id in truth_df['id'].unique():
-                    truth_data = truth_df[truth_df['id'] == truth_id]
-                    if len(truth_data) > 0:
-                        # Plot trajectory path
-                        ax.plot(truth_data['lon'], truth_data['lat'], 
-                               'r--', alpha=0.7, linewidth=2,
-                               label='Truth' if truth_id == truth_df['id'].iloc[0] else "")
-                        # Mark current position
-                        current_pos = truth_data.iloc[-1]
-                        ax.scatter(current_pos['lon'], current_pos['lat'], 
-                                  c='red', s=100, marker='s', zorder=5)
-            
-            # Set coordinate ranges
-            if lat_range:
-                ax.set_ylim(lat_range)
-            if lon_range:
-                ax.set_xlim(lon_range)
-            
-            # Styling and labels
-            if current_time:
-                title = f'Animation - Frame {current_frame + 1}/{total_frames} - Time: {current_time}'
-            else:
-                title = f'Animation - Frame {current_frame + 1}/{total_frames}'
-                
-            ax.set_title(title, fontsize=14, fontweight='bold')
-            ax.set_xlabel('Longitude', fontsize=12)
-            ax.set_ylabel('Latitude', fontsize=12)
-            ax.grid(True, alpha=0.3)
-            ax.set_aspect('equal', adjustable='box')
-            
-            # Add legend if there's data
-            if (filtered_data.get('tracks') is not None and len(filtered_data['tracks']) > 0) or \
-               (filtered_data.get('truth') is not None and len(filtered_data['truth']) > 0):
-                ax.legend()
-            
-            # Fix axis formatting
-            ax.ticklabel_format(style='plain', useOffset=False)
-            
-            # Format ticks for small coordinate ranges
-            if lat_range and abs(lat_range[1] - lat_range[0]) < 1.0:
-                import numpy as np
-                y_ticks = np.linspace(lat_range[0], lat_range[1], 6)
-                ax.set_yticks(y_ticks)
-                ax.set_yticklabels([f'{tick:.4f}' for tick in y_ticks])
-                
-            if lon_range and abs(lon_range[1] - lon_range[0]) < 1.0:
-                import numpy as np
-                x_ticks = np.linspace(lon_range[0], lon_range[1], 6)
-                ax.set_xticks(x_ticks)
-                ax.set_xticklabels([f'{tick:.4f}' for tick in x_ticks])
-            
-            # Update canvas
-            self.figure.tight_layout()
-            self.canvas.draw()
-            self.canvas.flush_events()  # Ensure all drawing events are processed
-            
-            # Initialize limit tracking for animation frame
-            self._initialize_limit_tracking()
-            
-        except Exception as e:
-            self.logger.error(f"Error creating animation frame: {e}")
-            self._show_error_plot(f"Animation Error: {str(e)}")
     
     def _initialize_limit_tracking(self):
         """Initialize limit tracking."""
