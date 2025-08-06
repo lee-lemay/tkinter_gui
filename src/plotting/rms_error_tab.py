@@ -44,8 +44,8 @@ class RMSErrorTabWidget(PlotTabWidget):
     def _create_controls(self):
         """Create RMS error-specific control widgets."""
         
-        # Add track selection widget
-        self.track_selection_widget = TrackSelectionWidget(self.control_frame)
+        # Add track selection widget (collapsed by default to save space)
+        self.track_selection_widget = TrackSelectionWidget(self.control_frame, collapsed=True)
         self.track_selection_widget.pack(fill="x", padx=5, pady=5)
         self.track_selection_widget.set_selection_callback(self._on_track_selection_changed)
 
@@ -131,7 +131,7 @@ class RMSErrorTabWidget(PlotTabWidget):
         self.logger.debug("Auto-updating RMS error plot")
         
         self.on_focus_dataset_changed()
-        
+
         self._on_calculate_rms()
     
     def should_auto_update(self, focus_info: Any) -> bool:

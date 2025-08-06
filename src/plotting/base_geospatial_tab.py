@@ -56,16 +56,17 @@ class BaseGeospatialTabWidget(PlotTabWidget):
     
     def _create_controls(self):
         """Create common geospatial control widgets."""
-        # Add data selection widget
-        self.data_selection_widget = DataSelectionWidget(self.control_frame)
+        # Add data selection widget (collapsed by default to save space)
+        self.data_selection_widget = DataSelectionWidget(self.control_frame, collapsed=True)
         self.data_selection_widget.pack(fill="x", padx=5, pady=5)
         self.data_selection_widget.set_tracks_callback(self._on_track_data_selection_changed)
         self.data_selection_widget.set_truth_callback(self._on_truth_data_selection_changed)
         
-        # Add coordinate range widget
+        # Add coordinate range widget (collapsed by default to save space)
         self.coord_range_widget = CoordinateRangeWidget(
             self.control_frame,
-            title=self._get_coordinate_widget_title()
+            title=self._get_coordinate_widget_title(),
+            collapsed=True
         )
         self.coord_range_widget.pack(fill="x", padx=5, pady=5)
         self.coord_range_widget.set_range_callback(self._on_coord_range_changed)

@@ -11,22 +11,102 @@ from typing import Optional, List, Dict, Callable, Any
 import logging
 
 
-class DataSelectionWidget(ttk.LabelFrame):
+class CollapsibleWidget(ttk.Frame):
+    """
+    Base class for collapsible widgets with expand/collapse functionality.
+    """
+    
+    def __init__(self, parent: tk.Widget, title: str = "Widget", collapsed: bool = False):
+        """
+        Initialize the collapsible widget.
+        
+        Args:
+            parent: Parent widget
+            title: Title for the widget
+            collapsed: Initial collapsed state
+        """
+        super().__init__(parent)
+        self.title = title
+        self.collapsed = collapsed
+        self.logger = logging.getLogger(__name__)
+        
+        # Create header frame with expand/collapse button
+        self.header_frame = ttk.Frame(self)
+        self.header_frame.pack(fill="x", padx=2, pady=2)
+        
+        # Toggle button
+        self.toggle_button = ttk.Button(
+            self.header_frame,
+            text="▼" if not collapsed else "►",
+            width=3,
+            command=self._toggle_collapsed
+        )
+        self.toggle_button.pack(side="left", padx=(0, 5))
+        
+        # Title label
+        self.title_label = ttk.Label(
+            self.header_frame,
+            text=title,
+            font=("TkDefaultFont", 9, "bold")
+        )
+        self.title_label.pack(side="left")
+        
+        # Content frame (will be shown/hidden)
+        self.content_frame = ttk.LabelFrame(self, text="", padding=5)
+        if not collapsed:
+            self.content_frame.pack(fill="both", expand=True, padx=2, pady=(0, 2))
+    
+    def _toggle_collapsed(self):
+        """Toggle the collapsed state of the widget."""
+        self.collapsed = not self.collapsed
+        
+        if self.collapsed:
+            # Hide content
+            self.content_frame.pack_forget()
+            self.toggle_button.config(text="►")
+            self.logger.debug(f"Collapsed widget: {self.title}")
+        else:
+            # Show content
+            self.content_frame.pack(fill="both", expand=True, padx=2, pady=(0, 2))
+            self.toggle_button.config(text="▼")
+            self.logger.debug(f"Expanded widget: {self.title}")
+    
+    def set_collapsed(self, collapsed: bool):
+        """
+        Set the collapsed state programmatically.
+        
+        Args:
+            collapsed: True to collapse, False to expand
+        """
+        if self.collapsed != collapsed:
+            self._toggle_collapsed()
+    
+    def is_collapsed(self) -> bool:
+        """
+        Check if the widget is currently collapsed.
+        
+        Returns:
+            True if collapsed, False if expanded
+        """
+        return self.collapsed
+
+
+class DataSelectionWidget(CollapsibleWidget):
     """
     Widget for selecting tracks and truth data with compact listboxes.
     Used by Geospatial and Animation tabs.
     """
     
-    def __init__(self, parent: tk.Widget, title: str = "Data Selection"):
+    def __init__(self, parent: tk.Widget, title: str = "Data Selection", collapsed: bool = False):
         """
         Initialize the data selection widget.
         
         Args:
             parent: Parent widget
             title: Title for the label frame
+            collapsed: Initial collapsed state
         """
-        super().__init__(parent, text=title, padding=5)
-        self.logger = logging.getLogger(__name__)
+        super().__init__(parent, title, collapsed)
         
         # Controller for accessing data
         self.controller: Optional[Any] = None
@@ -48,7 +128,7 @@ class DataSelectionWidget(ttk.LabelFrame):
     def _create_controls(self):
         """Create the selection controls."""
         # Create horizontal layout for side-by-side listboxes
-        container = ttk.Frame(self)
+        container = ttk.Frame(self.content_frame)
         container.pack(fill="both", expand=True, padx=5, pady=5)
         
         # Tracks section (left side)
@@ -399,22 +479,22 @@ class DataSelectionWidget(ttk.LabelFrame):
                         self.truth_listbox.selection_set(i)
 
 
-class CoordinateRangeWidget(ttk.LabelFrame):
+class CoordinateRangeWidget(CollapsibleWidget):
     """
     Widget for setting latitude and longitude ranges.
     Used by Geospatial and Animation tabs.
     """
     
-    def __init__(self, parent: tk.Widget, title: str = "Coordinate Range"):
+    def __init__(self, parent: tk.Widget, title: str = "Coordinate Range", collapsed: bool = False):
         """
         Initialize the coordinate range widget.
         
         Args:
             parent: Parent widget
             title: Title for the label frame
+            collapsed: Initial collapsed state
         """
-        super().__init__(parent, text=title, padding=5)
-        self.logger = logging.getLogger(__name__)
+        super().__init__(parent, title, collapsed)
         
         # Variables for coordinate ranges
         self.lat_min_var = tk.DoubleVar(value=-1.0)
@@ -431,7 +511,7 @@ class CoordinateRangeWidget(ttk.LabelFrame):
     def _create_controls(self):
         """Create the coordinate range controls."""
         # Latitude range
-        lat_frame = ttk.Frame(self)
+        lat_frame = ttk.Frame(self.content_frame)
         lat_frame.pack(fill="x", padx=5, pady=2)
         
         ttk.Label(lat_frame, text="Latitude:").pack(side="left")
@@ -460,7 +540,7 @@ class CoordinateRangeWidget(ttk.LabelFrame):
         self.lat_max_spin.pack(side="left", padx=2)
         
         # Longitude range
-        lon_frame = ttk.Frame(self)
+        lon_frame = ttk.Frame(self.content_frame)
         lon_frame.pack(fill="x", padx=5, pady=2)
         
         ttk.Label(lon_frame, text="Longitude:").pack(side="left")
@@ -540,22 +620,22 @@ class CoordinateRangeWidget(ttk.LabelFrame):
         self.lon_max_spin.set(f"{lon_range[1]:.4f}")
 
 
-class TrackSelectionWidget(ttk.LabelFrame):
+class TrackSelectionWidget(CollapsibleWidget):
     """
     Widget for selecting individual tracks with compact listbox.
     Used by Error Analysis and RMS Error tabs.
     """
     
-    def __init__(self, parent: tk.Widget, title: str = "Track Selection"):
+    def __init__(self, parent: tk.Widget, title: str = "Track Selection", collapsed: bool = False):
         """
         Initialize the track selection widget.
         
         Args:
             parent: Parent widget
             title: Title for the label frame
+            collapsed: Initial collapsed state
         """
-        super().__init__(parent, text=title, padding=5)
-        self.logger = logging.getLogger(__name__)
+        super().__init__(parent, title, collapsed)
         
         # Controller for accessing data
         self.controller: Optional[Any] = None
@@ -574,7 +654,7 @@ class TrackSelectionWidget(ttk.LabelFrame):
     def _create_controls(self):
         """Create the track selection controls."""
         # Create tracks listbox with scrollbar
-        list_frame = ttk.Frame(self)
+        list_frame = ttk.Frame(self.content_frame)
         list_frame.pack(fill="both", expand=True, padx=5, pady=5)
         
         self.tracks_listbox = tk.Listbox(
@@ -787,22 +867,22 @@ class TrackSelectionWidget(ttk.LabelFrame):
                         self.tracks_listbox.selection_set(i)
 
 
-class PlaybackControlWidget(ttk.LabelFrame):
+class PlaybackControlWidget(CollapsibleWidget):
     """
     Widget for animation playback controls.
     Used by Animation tab.
     """
     
-    def __init__(self, parent: tk.Widget, title: str = "Playback Controls"):
+    def __init__(self, parent: tk.Widget, title: str = "Playback Controls", collapsed: bool = False):
         """
         Initialize the playback control widget.
         
         Args:
             parent: Parent widget
             title: Title for the label frame
+            collapsed: Initial collapsed state
         """
-        super().__init__(parent, text=title, padding=5)
-        self.logger = logging.getLogger(__name__)
+        super().__init__(parent, title, collapsed)
         
         # Animation state variables
         self.playing = tk.BooleanVar(value=False)
@@ -826,7 +906,7 @@ class PlaybackControlWidget(ttk.LabelFrame):
     def _create_controls(self):
         """Create the playback controls."""
         # First row - main playback controls
-        playback_row1 = ttk.Frame(self)
+        playback_row1 = ttk.Frame(self.content_frame)
         playback_row1.pack(fill="x", padx=5, pady=2)
         
         self.play_btn = ttk.Button(
@@ -879,7 +959,7 @@ class PlaybackControlWidget(ttk.LabelFrame):
         self.frame_label.pack(side="left", padx=(10, 2))
         
         # Second row - speed control
-        playback_row2 = ttk.Frame(self)
+        playback_row2 = ttk.Frame(self.content_frame)
         playback_row2.pack(fill="x", padx=5, pady=2)
         
         ttk.Label(playback_row2, text="Speed:").pack(side="left")

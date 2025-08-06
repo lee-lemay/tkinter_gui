@@ -62,14 +62,15 @@ class AnimationTabWidget(BaseGeospatialTabWidget):
         # Recreate coordinate range widget in the controls frame
         self.coord_range_widget = CoordinateRangeWidget(
             controls_frame,
-            title=self._get_coordinate_widget_title()
+            title=self._get_coordinate_widget_title(),
+            collapsed=True
         )
         self.coord_range_widget.pack(side="left", fill="both", expand=True, padx=(0, 5), pady=5)
         self.coord_range_widget.set_range_callback(self._on_coord_range_changed)
         self.coord_range_widget.set_reset_callback(self._on_reset_bounds)
         
-        # Add playback control widget
-        self.playback_widget = PlaybackControlWidget(controls_frame)
+        # Add playback control widget (collapsed by default to save space)
+        self.playback_widget = PlaybackControlWidget(controls_frame, collapsed=True)
         self.playback_widget.pack(side="right", fill="y", padx=(5,0), pady=5)
         self.playback_widget.set_play_callback(self._on_play)
         self.playback_widget.set_pause_callback(self._on_pause)
