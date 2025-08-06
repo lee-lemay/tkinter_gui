@@ -121,44 +121,6 @@ class ApplicationController:
         """Handle File -> Exit menu action."""
         self.on_window_close()
     
-    def on_menu_view_toggle_left_panel(self):
-        """Handle View -> Toggle Left Panel menu action."""
-        try:
-            current_state = self.model.left_panel_visible
-            self.model.left_panel_visible = not current_state
-            self.logger.debug(f"Left panel toggled to: {not current_state}")
-        except Exception as e:
-            self.logger.error(f"Error toggling left panel: {e}")
-    
-    def on_menu_view_toggle_right_panel(self):
-        """Handle View -> Toggle Right Panel menu action."""
-        try:
-            current_state = self.model.right_panel_visible
-            self.model.right_panel_visible = not current_state
-            self.logger.debug(f"Right panel toggled to: {not current_state}")
-        except Exception as e:
-            self.logger.error(f"Error toggling right panel: {e}")
-    
-    def on_menu_view_reset_layout(self):
-        """Handle View -> Reset Layout menu action."""
-        try:
-            self.model.left_panel_visible = True
-            self.model.right_panel_visible = True
-            self.logger.info("Layout reset to default")
-        except Exception as e:
-            self.logger.error(f"Error resetting layout: {e}")
-    
-    def on_menu_help_about(self):
-        """Handle Help -> About menu action."""
-        about_text = (
-            "Data Analysis Application\\n"
-            "Version 1.0\\n\\n"
-            "A tkinter-based GUI for reviewing and analyzing\\n"
-            "datasets containing truth, detection, and tracking data.\\n\\n"
-            "Phase 3: Data Management - ACTIVE"
-        )
-        self.view.show_info("About", about_text)
-    
     # Status Updates
     def update_status(self, message: str):
         """

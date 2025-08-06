@@ -88,80 +88,6 @@ class MenuBar:
             accelerator="Ctrl+Q"
         )
         self.menubar.add_cascade(label="File", menu=self.file_menu)
-        
-        # View Menu
-        self.view_menu = tk.Menu(self.menubar, tearoff=0)
-        self.view_menu.add_command(
-            label="Toggle Left Panel",
-            command=self._on_view_toggle_left_panel,
-            accelerator="F9"
-        )
-        self.view_menu.add_command(
-            label="Toggle Right Panel",
-            command=self._on_view_toggle_right_panel,
-            accelerator="F10"
-        )
-        self.view_menu.add_separator()
-        self.view_menu.add_command(
-            label="Zoom In",
-            state="disabled",  # Placeholder
-            accelerator="Ctrl++"
-        )
-        self.view_menu.add_command(
-            label="Zoom Out",
-            state="disabled",  # Placeholder
-            accelerator="Ctrl+-"
-        )
-        self.view_menu.add_command(
-            label="Reset Zoom",
-            state="disabled",  # Placeholder
-            accelerator="Ctrl+0"
-        )
-        self.view_menu.add_separator()
-        self.view_menu.add_command(
-            label="Reset Layout",
-            command=self._on_view_reset_layout
-        )
-        self.menubar.add_cascade(label="View", menu=self.view_menu)
-        
-        # Tools Menu
-        self.tools_menu = tk.Menu(self.menubar, tearoff=0)
-        self.tools_menu.add_command(
-            label="Export Data...",
-            state="disabled",  # Placeholder
-            accelerator="Ctrl+E"
-        )
-        self.tools_menu.add_command(
-            label="Export Plot...",
-            state="disabled",  # Placeholder
-            accelerator="Ctrl+Shift+E"
-        )
-        self.tools_menu.add_separator()
-        self.tools_menu.add_command(
-            label="Preferences...",
-            state="disabled",  # Placeholder
-            accelerator="Ctrl+,"
-        )
-        self.menubar.add_cascade(label="Tools", menu=self.tools_menu)
-        
-        # Help Menu
-        self.help_menu = tk.Menu(self.menubar, tearoff=0)
-        self.help_menu.add_command(
-            label="User Guide",
-            state="disabled",  # Placeholder
-            accelerator="F1"
-        )
-        self.help_menu.add_command(
-            label="Keyboard Shortcuts",
-            state="disabled",  # Placeholder
-            accelerator="Ctrl+?"
-        )
-        self.help_menu.add_separator()
-        self.help_menu.add_command(
-            label="About",
-            command=self._on_help_about
-        )
-        self.menubar.add_cascade(label="Help", menu=self.help_menu)
     
     def _create_frame_menu(self):
         """Create a frame-based menu as fallback."""
@@ -173,18 +99,6 @@ class MenuBar:
         file_btn = ttk.Menubutton(menu_frame, text="File")
         file_btn.pack(side="left")
         file_btn.configure(menu=self.file_menu)
-        
-        view_btn = ttk.Menubutton(menu_frame, text="View")
-        view_btn.pack(side="left")
-        view_btn.configure(menu=self.view_menu)
-        
-        tools_btn = ttk.Menubutton(menu_frame, text="Tools")
-        tools_btn.pack(side="left")
-        tools_btn.configure(menu=self.tools_menu)
-        
-        help_btn = ttk.Menubutton(menu_frame, text="Help")
-        help_btn.pack(side="right")
-        help_btn.configure(menu=self.help_menu)
     
     # Menu Event Handlers
     def _on_file_open(self):
@@ -200,34 +114,6 @@ class MenuBar:
             self.controller.on_menu_file_exit()
         else:
             self.logger.warning("No controller set for file exit action")
-    
-    def _on_view_toggle_left_panel(self):
-        """Handle View -> Toggle Left Panel menu action."""
-        if self.controller:
-            self.controller.on_menu_view_toggle_left_panel()
-        else:
-            self.logger.warning("No controller set for toggle left panel action")
-    
-    def _on_view_toggle_right_panel(self):
-        """Handle View -> Toggle Right Panel menu action."""
-        if self.controller:
-            self.controller.on_menu_view_toggle_right_panel()
-        else:
-            self.logger.warning("No controller set for toggle right panel action")
-    
-    def _on_view_reset_layout(self):
-        """Handle View -> Reset Layout menu action."""
-        if self.controller:
-            self.controller.on_menu_view_reset_layout()
-        else:
-            self.logger.warning("No controller set for reset layout action")
-    
-    def _on_help_about(self):
-        """Handle Help -> About menu action."""
-        if self.controller:
-            self.controller.on_menu_help_about()
-        else:
-            self.logger.warning("No controller set for help about action")
     
     # State Management
     def on_state_changed(self, event: str):
