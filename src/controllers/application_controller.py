@@ -186,7 +186,7 @@ class ApplicationController:
         """Get the currently focused dataset."""
         return self.model.get_focus_dataset_info()
     
-    # Dataset Management - Phase 3 Implementation
+    # Dataset Management
     def load_dataset_directory(self, directory_path: str):
         """
         Load datasets from a directory.
@@ -200,6 +200,9 @@ class ApplicationController:
             
             # Set the dataset directory in the model
             self.model.dataset_directory = Path(directory_path)
+
+            # Add to recent directories
+            self.model.add_recent_directory(directory_path)
             
             # Clear existing datasets
             self.model.clear_datasets()
@@ -387,6 +390,28 @@ class ApplicationController:
             
         except Exception as e:
             self.logger.error(f"Error during cleanup: {e}")
+
+        # Recent Directories Management
+    def remove_recent_directory(self, directory_path: str):
+        """
+        Remove a directory from recent directories list.
+        
+        Args:
+            directory_path: Path to remove
+        """
+        try:
+            self.model.remove_recent_directory(directory_path)
+            self.logger.debug(f"Removed recent directory: {directory_path}")
+        except Exception as e:
+            self.logger.error(f"Error removing recent directory: {e}")
+    
+    def clear_recent_directories(self):
+        """Clear all recent directories."""
+        try:
+            self.model.clear_recent_directories()
+            self.logger.info("Recent directories cleared")
+        except Exception as e:
+            self.logger.error(f"Error clearing recent directories: {e}")
     
     # Utility Methods
     def handle_error(self, error: Exception, context: str = ""):

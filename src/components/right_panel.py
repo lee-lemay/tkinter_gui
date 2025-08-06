@@ -11,7 +11,6 @@ from tkinter import ttk
 import logging
 from typing import Optional, Any, Dict, List
 
-from ..visualization.matplotlib_canvas import MatplotlibCanvas
 from ..visualization.plot_manager import PlotManager
 from ..plotting.backends import MatplotlibBackend
 from ..plotting.statistics_tab import StatisticsTabWidget
@@ -39,9 +38,6 @@ class RightPanel:
         self.logger = logging.getLogger(__name__)
         self.controller: Optional[Any] = None
         self.plot_manager: Optional[PlotManager] = None
-        
-        # Store matplotlib canvases for each tab
-        self.canvas_widgets: Dict[str, MatplotlibCanvas] = {}
         
         # Create the main frame
         self.frame = ttk.Frame(parent)
@@ -317,53 +313,3 @@ class RightPanel:
             return self.notebook.tab(current_index, "text")
         except Exception as e:
             self.logger.error(f"Error getting current tab: {e}")
-            return ""
-    
-    def select_tab(self, tab_name: str):
-        """
-        Select a specific tab.
-        
-        Args:
-            tab_name: Name of the tab to select
-        """
-        try:
-            tab_count = self.notebook.index("end")
-            for i in range(tab_count):
-                if self.notebook.tab(i, "text") == tab_name:
-                    self.notebook.select(i)
-                    self.logger.debug(f"Selected tab: {tab_name}")
-                    break
-        except Exception as e:
-            self.logger.error(f"Error selecting tab: {e}")
-    
-    def _notify_tabs_focus_changed(self):
-        """Notify all tabs that the focus dataset has changed."""
-        try:
-            # Notify geospatial-based tabs that have the focus change handler
-            if hasattr(self, 'geospatial_tab') and hasattr(self.geospatial_tab, 'on_focus_dataset_changed'):
-                self.geospatial_tab.on_focus_dataset_changed()
-                
-            if hasattr(self, 'animation_tab') and hasattr(self.animation_tab, 'on_focus_dataset_changed'):
-                self.animation_tab.on_focus_dataset_changed()
-
-            if hasattr(self, 'error_analysis_tab') and hasattr(self.error_analysis_tab, 'on_focus_dataset_changed'):
-                self.error_analysis_tab.on_focus_dataset_changed()
-
-            if hasattr(self, 'rms_error_tab') and hasattr(self.rms_error_tab, 'on_focus_dataset_changed'):
-                self.rms_error_tab.on_focus_dataset_changed()
-
-            if hasattr(self, 'lifetime_tab') and hasattr(self.lifetime_tab, 'on_focus_dataset_changed'):
-                self.lifetime_tab.on_focus_dataset_changed()
-
-            if hasattr(self, 'statistics_tab') and hasattr(self.statistics_tab, 'on_focus_dataset_changed'):
-                self.statistics_tab.on_focus_dataset_changed()
-                
-            if hasattr(self, 'overview_tab') and hasattr(self.overview_tab, 'on_focus_dataset_changed'):
-                self.overview_tab.on_focus_dataset_changed()
-            
-            
-            self.logger.debug("All tabs notified of focus dataset change")
-            
-        except Exception as e:
-            self.logger.error(f"Error notifying tabs of focus change: {e}")
-    

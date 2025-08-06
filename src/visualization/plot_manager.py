@@ -410,11 +410,19 @@ class PlotManager:
             focus_dataset.truth_df is None or focus_dataset.truth_df.empty):
             return {'error': 'Missing tracks or truth data for error calculation'}
         
-        tracks_df = focus_dataset.tracks_df
-        truth_df = focus_dataset.truth_df
-        
         # Simple error calculation - match by timestamp (simplified)
         error_data = {'north_errors': [], 'east_errors': [], 'timestamps': []}
+
+        tracks_df = focus_dataset.tracks_df
+        truth_df = focus_dataset.truth_df
+        tracks_selection = config.get('tracks', "All")
+        if tracks_selection != "All" and tracks_selection != "None":
+            if isinstance(tracks_selection, list) and len(tracks_selection) > 0:
+                # Filter to selected tracks only
+                tracks_df = tracks_df[tracks_df['track_id'].isin(tracks_selection)]
+                
+        if tracks_df.empty or tracks_selection == "None":
+            return {'error': 'No tracks selected or available for RMS error calculation'}
         
         for _, track_row in tracks_df.iterrows():
             # Find closest truth point by timestamp
@@ -454,7 +462,16 @@ class PlotManager:
         
         # Calculate 3D RMS errors
         rms_data = {'x_pos': [], 'y_pos': [], 'rms_error_3d': [], 'timestamps': []}
-        
+
+        tracks_selection = config.get('tracks', "All")
+        if tracks_selection != "All" and tracks_selection != "None":
+            if isinstance(tracks_selection, list) and len(tracks_selection) > 0:
+                # Filter to selected tracks only
+                tracks_df = tracks_df[tracks_df['track_id'].isin(tracks_selection)]
+                
+        if tracks_df.empty or tracks_selection == "None":
+            return {'error': 'No tracks selected or available for RMS error calculation'}
+    
         for _, track_row in tracks_df.iterrows():
             # Find closest truth point
             time_diffs = abs(truth_df['timestamp'] - track_row['timestamp'])

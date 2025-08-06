@@ -276,6 +276,19 @@ class PlotTabWidget(ttk.Frame):
                 # Restore callback
                 self.coord_range_widget.range_callback = original_callback
             
+            # Update track selection widget to reflect new dataset
+            if hasattr(self, 'track_selection_widget') and self.track_selection_widget:
+                # Temporarily disable callback to prevent multiple plot generations
+                original_callback = self.track_selection_widget.selection_callback
+                self.track_selection_widget.selection_callback = None
+                
+                # Update tracks from the new focus dataset
+                self.track_selection_widget._update_tracks_from_focus()
+                
+                # Restore callback
+                self.track_selection_widget.selection_callback = original_callback
+            
+            
             self.logger.debug("Focus dataset change handled successfully")
             
         except Exception as e:

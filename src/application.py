@@ -56,7 +56,11 @@ class DataAnalysisApp:
             self.controller = ApplicationController(self.model, self.view)
             
             # Setup the view with the controller
+            # The view passes the controller to all child components
             self.view.set_controller(self.controller)
+
+            # Trigger an initial state update
+            self.model.send_controller_changed_message()
             
             self.logger.info("Application components initialized successfully")
             
@@ -64,13 +68,9 @@ class DataAnalysisApp:
             self.logger.error(f"Failed to initialize application components: {e}")
             raise
     
-    def run(self, demo_mode=False, demo_duration=None):
+    def run(self):
         """
         Start the application main loop.
-        
-        Args:
-            demo_mode: If True, run in demo mode with automatic shutdown
-            demo_duration: Duration in seconds for demo mode (default 10)
         """
         if not self.root:
             raise RuntimeError("Application not properly initialized")
@@ -82,12 +82,6 @@ class DataAnalysisApp:
             self.root.title("Data Analysis Application")
             self.root.geometry("1200x800")
             self.root.minsize(800, 600)
-            
-            # If demo mode, schedule automatic shutdown
-            if demo_mode:
-                duration = demo_duration or 10
-                self.logger.info(f"Running in demo mode for {duration} seconds")
-                self.root.after(duration * 1000, self.shutdown)
             
             # Start the tkinter main loop
             self.root.mainloop()

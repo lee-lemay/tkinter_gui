@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from enum import Enum
 import pandas as pd
+import json
 
 
 class DatasetStatus(Enum):
@@ -71,8 +72,25 @@ class ApplicationState:
         
         # Observers for state changes (for MVC communication)
         self._observers: List[Any] = []
+
+        # Recent directories (limited to 5 most recent, persistent across sessions)
+        self._recent_directories: List[str] = []
+        self._max_recent_directories: int = 5
+        
+        # Load recent directories from previous sessions
+        self._load_recent_directories()
+        
         
         self.logger.info("Application state initialized")
+
+    def send_controller_changed_message(self):
+        """
+        Notify all observers that the controller has changed.
+        
+        This is used to trigger UI updates when the controller is set.
+        """
+        self.logger.debug("Sending controller changed message to observers")
+        self._notify_observers("controller_changed")
     
     # Dataset Directory Management
     @property
@@ -273,3 +291,127 @@ class ApplicationState:
             "current_view": self._current_view,
             "processing_status": self._processing_status
         }
+        
+    # Recent Directories Management
+    @property
+    def recent_directories(self) -> List[str]:
+        """Get the list of recent directories."""
+        return self._recent_directories.copy()
+    
+    def add_recent_directory(self, directory_path: str):
+        """
+        Add a directory to the recent directories list.
+        
+        Args:
+            directory_path: Path to the directory to add
+        """
+        try:
+            # Convert to absolute path string for consistency
+            abs_path = str(Path(directory_path).resolve())
+            
+            # Remove if already exists (to move to front)
+            if abs_path in self._recent_directories:
+                self._recent_directories.remove(abs_path)
+            
+            # Add to front
+            self._recent_directories.insert(0, abs_path)
+            
+            # Limit to max number
+            if len(self._recent_directories) > self._max_recent_directories:
+                self._recent_directories = self._recent_directories[:self._max_recent_directories]
+            
+            self.logger.debug(f"Added recent directory: {abs_path}")
+            
+            # Save to disk immediately
+            self._save_recent_directories()
+            
+            # Notify observers
+            self._notify_observers("recent_directories_changed")
+            
+        except Exception as e:
+            self.logger.error(f"Error adding recent directory: {e}")
+    
+    def clear_recent_directories(self):
+        """Clear all recent directories."""
+        self._recent_directories.clear()
+        self.logger.debug("Recent directories cleared")
+        
+        # Save to disk
+        self._save_recent_directories()
+        
+        # Notify observers
+        self._notify_observers("recent_directories_changed")
+    
+    def remove_recent_directory(self, directory_path: str):
+        """
+        Remove a specific directory from recent directories.
+        
+        Args:
+            directory_path: Path to remove
+        """
+        try:
+            abs_path = str(Path(directory_path).resolve())
+            if abs_path in self._recent_directories:
+                self._recent_directories.remove(abs_path)
+                self.logger.debug(f"Removed recent directory: {abs_path}")
+                
+                # Save to disk
+                self._save_recent_directories()
+                
+                # Notify observers
+                self._notify_observers("recent_directories_changed")
+        except Exception as e:
+            self.logger.error(f"Error removing recent directory: {e}")
+    
+    def _get_config_directory(self) -> Path:
+        """Get the application configuration directory."""
+        config_dir = Path.home() / ".data_analysis_app"
+        config_dir.mkdir(exist_ok=True)
+        return config_dir
+    
+    def _save_recent_directories(self):
+        """Save recent directories to a persistent file."""
+        try:
+            config_file = self._get_config_directory() / "recent_directories.json"
+            
+            # Only save directories that still exist
+            existing_dirs = [d for d in self._recent_directories if Path(d).exists()]
+            
+            with open(config_file, 'w') as f:
+                json.dump(existing_dirs, f, indent=2)
+            
+            # Update the in-memory list if some directories were removed
+            if len(existing_dirs) != len(self._recent_directories):
+                self._recent_directories = existing_dirs
+            
+            self.logger.debug(f"Recent directories saved to: {config_file}")
+            
+        except Exception as e:
+            self.logger.error(f"Error saving recent directories: {e}")
+    
+    def _load_recent_directories(self):
+        """Load recent directories from persistent file."""
+        try:
+            config_file = self._get_config_directory() / "recent_directories.json"
+            
+            if config_file.exists():
+                with open(config_file, 'r') as f:
+                    loaded_dirs = json.load(f)
+                
+                # Validate that directories still exist
+                self._recent_directories = [d for d in loaded_dirs if Path(d).exists()]
+                
+                self.logger.debug(f"Recent directories loaded: {len(self._recent_directories)} items")
+                
+                # If some directories were invalid, save the cleaned list
+                if len(self._recent_directories) != len(loaded_dirs):
+                    self._save_recent_directories()
+            
+                # Notify observers
+                self._notify_observers("recent_directories_changed")
+            else:
+                self.logger.debug("No recent directories file found, starting with empty list")
+                
+        except Exception as e:
+            self.logger.error(f"Error loading recent directories: {e}")
+            self._recent_directories = []

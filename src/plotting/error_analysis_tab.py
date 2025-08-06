@@ -70,6 +70,15 @@ class ErrorAnalysisTabWidget(PlotTabWidget):
         """Handle dataset selection changes."""
         self.logger.debug(f"Dataset selection changed: {selection}")
         self._on_analyze_errors()
+
+    def on_focus_dataset_changed(self):
+        """Handle focus dataset changes by updating track selection widget."""
+        try:          
+          # Call parent method to update common widgets
+          super().on_focus_dataset_changed()
+            
+        except Exception as e:
+            self.logger.error(f"Error handling focus dataset change in error analysis tab: {e}")
     
     def _on_analyze_errors(self):
         """Perform error analysis and update the plot."""
@@ -80,8 +89,12 @@ class ErrorAnalysisTabWidget(PlotTabWidget):
             # Path 1: Use plot_manager if available (legacy compatibility)
             if self.plot_manager and self.controller:
                 app_state = self.controller.get_state()
-                plot_data = self.plot_manager.prepare_plot_data('north_east_error', app_state)
-            
+                
+                # Build configuration with track selection
+                config = self._build_plot_config()
+
+                plot_data = self.plot_manager.prepare_plot_data('north_east_error', app_state, config)
+
             # Update the plot if we have data
             if plot_data and 'error' not in plot_data:
                 config = {
@@ -98,10 +111,34 @@ class ErrorAnalysisTabWidget(PlotTabWidget):
         except Exception as e:
             self.logger.error(f"Error performing error analysis: {e}")
             self.clear_plot()
+
+    def _build_plot_config(self) -> Dict[str, Any]:
+        """
+        Build the configuration dictionary for plot generation.
+        
+        Returns:
+            Configuration dictionary with track selection
+        """
+        config: Dict[str, Any] = {}
+        
+        # Get selected tracks from the track selection widget
+        if hasattr(self, 'track_selection_widget') and self.track_selection_widget:
+            selected_tracks = self.track_selection_widget.get_selected_tracks()
+            if selected_tracks:
+                config['tracks'] = selected_tracks
+            else:
+                config['tracks'] = "None"
+        else:
+            config['tracks'] = "All"  # Default to all tracks if no widget
+        
+        return config
     
     def auto_update(self):
         """Auto-update the plot when data changes."""
         self.logger.debug("Auto-updating error analysis plot")
+        
+        self.on_focus_dataset_changed()
+        
         self._on_analyze_errors()
     
     def should_auto_update(self, focus_info: Any) -> bool:
