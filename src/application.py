@@ -51,7 +51,7 @@ class DataAnalysisApp:
             # Initialize the model (application state)
             self.model = ApplicationState()
             
-            # Load configuration before wiring controller/view reactions
+            # Model loads configuration internally; we only need to decide on dataset auto-load
             self._load_startup_configuration()
             
             # Initialize the view (main window)
@@ -83,31 +83,13 @@ class DataAnalysisApp:
             config_path = Path(__file__).resolve().parent.parent / "config.yaml"
             loader = ConfigLoader(self.logger)
             cfg = loader.load(config_path)
-
-            # Apply configuration to model
-            model.force_update = bool(cfg.get("ForceUpdate", False))
-            metric = cfg.get("MetricMethod")
-            if isinstance(metric, str) and metric:
-                model.metric_method = metric
-            thresh = cfg.get("DistanceThreshold")
-            if thresh is not None:
-                model.distance_threshold = thresh
-
             ds_dir = cfg.get("DatasetDirectory")
             if ds_dir:
-                # Set now; actual scanning is triggered after controller is ready
-                model.dataset_directory = Path(ds_dir)
-                # Add to recent now so it's visible immediately
-                model.add_recent_directory(str(ds_dir))
                 # Defer actual loading until controller exists: handled in run()
                 self._pending_startup_dataset_dir = Path(ds_dir)
             else:
                 self._pending_startup_dataset_dir = None
-
-            self.logger.debug(
-                f"Startup config applied: force={model.force_update}, metric={model.metric_method}, "
-                f"threshold={model.distance_threshold}, dataset_dir={model.dataset_directory}"
-            )
+            self.logger.debug(f"Startup dataset_dir from config: {ds_dir}")
         except Exception as e:
             self.logger.error(f"Error loading startup configuration: {e}")
             self._pending_startup_dataset_dir = None

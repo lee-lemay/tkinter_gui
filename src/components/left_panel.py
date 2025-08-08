@@ -55,15 +55,27 @@ class LeftPanel:
             font=("TkDefaultFont", 10, "bold")
         )
         title_label.pack(fill="x", padx=10, pady=(10, 5))
-        
+
         # Dataset Overview Section
         self._create_dataset_overview_section()
-        
+
         # Separator
         ttk.Separator(self.frame, orient="horizontal").pack(fill="x", padx=10, pady=10)
-        
+
         # Current Dataset Focus Section
         self._create_focus_section()
+
+        # Separator
+        ttk.Separator(self.frame, orient="horizontal").pack(fill="x", padx=10, pady=10)
+
+        # Per-dataset Config (read-only)
+        self._create_dataset_config_view_section()
+
+        # Separator
+        ttk.Separator(self.frame, orient="horizontal").pack(fill="x", padx=10, pady=10)
+
+        # Configuration Section (bottom)
+        self._create_config_section()
     
     def _create_dataset_overview_section(self):
         """Create the dataset overview section."""
@@ -190,16 +202,6 @@ class LeftPanel:
         controls_frame = ttk.Frame(focus_frame)
         controls_frame.pack(fill="x", pady=(10, 0))
         
-        # Association range
-        ttk.Label(controls_frame, text="Association Range:").pack(anchor="w")
-        range_frame = ttk.Frame(controls_frame)
-        range_frame.pack(fill="x", pady=(2, 5))
-        
-        self.range_var = tk.StringVar(value="100.0")
-        range_entry = ttk.Entry(range_frame, textvariable=self.range_var, width=10)
-        range_entry.pack(side="left")
-        ttk.Label(range_frame, text="meters").pack(side="left", padx=(5, 0))
-        
         # Reprocess button
         self.reprocess_btn = ttk.Button(
             controls_frame,
@@ -208,6 +210,118 @@ class LeftPanel:
             state="disabled"
         )
         self.reprocess_btn.pack(anchor="e")
+
+    def _create_config_section(self):
+        """Create configuration editor section at the bottom."""
+        cfg_frame = ttk.LabelFrame(self.frame, text="Current Configuration", padding=5)
+        cfg_frame.pack(fill="x", padx=10, pady=5)
+
+        # ForceUpdate (use PKL when False)
+        fu_row = ttk.Frame(cfg_frame)
+        fu_row.pack(fill="x", pady=2)
+        self.force_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            fu_row,
+            text="Force Update (ignore PKL)",
+            variable=self.force_var,
+            command=self._on_config_force_changed,
+        ).pack(anchor="w")
+
+        # Metric method (dropdown)
+        metric_row = ttk.Frame(cfg_frame)
+        metric_row.pack(fill="x", pady=2)
+        ttk.Label(metric_row, text="Metric Method:").pack(side="left")
+        self.metric_var = tk.StringVar(value="Haversine")
+        self.metric_combo = ttk.Combobox(
+            metric_row,
+            textvariable=self.metric_var,
+            state="readonly",
+            width=18,
+            values=("Haversine",),
+        )
+        self.metric_combo.pack(side="left", padx=(5, 0))
+        self.metric_combo.bind("<<ComboboxSelected>>", lambda e: self._on_config_metric_save())
+
+        # Distance threshold (updates on focus-out)
+        dist_row = ttk.Frame(cfg_frame)
+        dist_row.pack(fill="x", pady=2)
+        ttk.Label(dist_row, text="Distance Threshold (m):").pack(side="left")
+        self.dist_var = tk.StringVar(value="1000")
+        dist_entry = ttk.Entry(dist_row, textvariable=self.dist_var, width=10)
+        dist_entry.pack(side="left", padx=(5, 0))
+        dist_entry.bind("<FocusOut>", self._on_config_distance_blur)
+
+        # Dataset directory (read-only display; always reflects current selection)
+        dir_row = ttk.Frame(cfg_frame)
+        dir_row.pack(fill="x", pady=2)
+        ttk.Label(dir_row, text="Dataset Directory:").pack(side="left")
+        self.ds_dir_var = tk.StringVar(value="-")
+        dir_entry = ttk.Entry(dir_row, textvariable=self.ds_dir_var, state="readonly")
+        dir_entry.pack(side="left", fill="x", expand=True, padx=(5, 0))
+
+    def _create_dataset_config_view_section(self):
+        """Create a read-only view of the focused dataset's captured configuration."""
+        view_frame = ttk.LabelFrame(self.frame, text="Dataset Configuration (read-only)", padding=5)
+        view_frame.pack(fill="x", padx=10, pady=5)
+
+        grid = ttk.Frame(view_frame)
+        grid.pack(fill="x")
+
+        # Labels and corresponding variables
+        self.ds_cfg_force_var = tk.StringVar(value="-")
+        self.ds_cfg_metric_var = tk.StringVar(value="-")
+        self.ds_cfg_dist_var = tk.StringVar(value="-")
+        self.ds_cfg_dir_var = tk.StringVar(value="-")
+
+        rows = [
+            ("ForceUpdate:", self.ds_cfg_force_var),
+            ("MetricMethod:", self.ds_cfg_metric_var),
+            ("DistanceThreshold:", self.ds_cfg_dist_var),
+            ("DatasetDirectory:", self.ds_cfg_dir_var),
+        ]
+
+        for r, (label, var) in enumerate(rows):
+            ttk.Label(grid, text=label).grid(row=r, column=0, sticky="w", pady=1)
+            ttk.Label(grid, textvariable=var).grid(row=r, column=1, sticky="w", padx=(5, 0), pady=1)
+
+        grid.grid_columnconfigure(1, weight=1)
+
+    def _sync_dataset_config_view(self):
+        """Update read-only config view from model for the focus dataset."""
+        if not self.controller:
+            return
+        try:
+            state = self.controller.get_state()
+            focus_info = state.get_focus_dataset_info()
+            if not focus_info:
+                self.ds_cfg_force_var.set("-")
+                self.ds_cfg_metric_var.set("-")
+                self.ds_cfg_dist_var.set("-")
+                self.ds_cfg_dir_var.set("-")
+                return
+            cfg = state.get_dataset_config(focus_info.name)
+            if not cfg:
+                self.ds_cfg_force_var.set("-")
+                self.ds_cfg_metric_var.set("-")
+                self.ds_cfg_dist_var.set("-")
+                self.ds_cfg_dir_var.set("-")
+                return
+            self.ds_cfg_force_var.set(str(cfg.get("ForceUpdate", "-")))
+            self.ds_cfg_metric_var.set(str(cfg.get("MetricMethod", "-")))
+            # show as int if whole number, else float
+            dt = cfg.get("DistanceThreshold")
+            if isinstance(dt, (int, float)):
+                if float(dt).is_integer():
+                    self.ds_cfg_dist_var.set(str(int(dt)))
+                else:
+                    self.ds_cfg_dist_var.set(str(float(dt)))
+            else:
+                self.ds_cfg_dist_var.set("-")
+            self.ds_cfg_dir_var.set(str(cfg.get("DatasetDirectory", "-")))
+        except Exception as e:
+            self.logger.debug(f"Dataset config view sync skipped: {e}")
+
+    # Initialized from model via on_state_changed when controller attaches
     
     # Event Handlers
     def _on_dataset_selection(self, event):
@@ -260,6 +374,43 @@ class LeftPanel:
                 self.controller.process_datasets([focus_dataset.name])
             else:
                 self.controller.view.show_info("No Focus Dataset", "Please select a focus dataset first.")
+
+    # Config Handlers
+    def _on_config_force_changed(self):
+        if not self.controller:
+            return
+        state = self.controller.get_state()
+        state.force_update = self.force_var.get()
+
+    def _on_config_metric_save(self):
+        if not self.controller:
+            return
+        state = self.controller.get_state()
+        value = (self.metric_var.get() or "").strip()
+        if value:
+            state.metric_method = value
+
+    def _on_config_distance_blur(self, event):
+        """Update distance threshold when entry loses focus, if changed and valid."""
+        if not self.controller:
+            return
+        state = self.controller.get_state()
+        text = (self.dist_var.get() or "").strip()
+        if text == "":
+            # Revert to current state value on empty input
+            self.dist_var.set(str(state.distance_threshold))
+            return
+        try:
+            val = float(text)
+        except Exception:
+            # Invalid input: revert and inform user
+            self.dist_var.set(str(state.distance_threshold))
+            if hasattr(self.controller, 'view') and hasattr(self.controller.view, 'show_info'):
+                self.controller.view.show_info("Invalid Value", "Distance threshold must be a number.")
+            return
+        # Only update if value actually changed
+        if val != state.distance_threshold:
+            state.distance_threshold = val
     
     # Helper Methods
     def _get_selected_dataset_names(self):
@@ -431,6 +582,20 @@ class LeftPanel:
                     self.reprocess_btn.configure(state="normal")
                 else:
                     self.reprocess_btn.configure(state="disabled")
+                # Update dataset config view
+                self._sync_dataset_config_view()
+            elif event in ("controller_changed", "config_changed", "dataset_directory_changed"):
+                # Populate config UI from model
+                try:
+                    self.force_var.set(bool(state.force_update))
+                    self.metric_var.set(state.metric_method or "")
+                    self.dist_var.set(str(state.distance_threshold))
+                    self.ds_dir_var.set(str(state.dataset_directory) if state.dataset_directory else "-")
+                except Exception as e:
+                    self.logger.debug(f"Config UI sync skipped: {e}")
+            elif event == "dataset_config_changed":
+                # Update read-only dataset config view
+                self._sync_dataset_config_view()
             
         except Exception as e:
             self.logger.error(f"Error handling state change '{event}': {e}")

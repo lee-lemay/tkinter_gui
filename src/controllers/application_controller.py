@@ -258,6 +258,12 @@ class ApplicationController:
             # Update status to loaded
             dataset_info.status = DatasetStatus.LOADED
             self.model.add_dataset(dataset_info)  # Trigger update
+
+            # Capture a read-only config snapshot for this dataset (CSV-based load)
+            try:
+                self.model.capture_active_config_for_dataset(dataset_info.name)
+            except Exception as e:
+                self.logger.debug(f"Config snapshot capture skipped for {dataset_info.name}: {e}")
             
             self.model.processing_status = f"Loaded {dataset_info.name}"
             self.logger.info(f"Successfully loaded dataset: {dataset_info.name}")

@@ -16,6 +16,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "MetricMethod": "Haversine",
     "DistanceThreshold": 1000,
     "DatasetDirectory": None,
+    "RecentDirectories": [],
 }
 
 
@@ -63,3 +64,42 @@ class ConfigLoader:
         except Exception as exc:  # pragma: no cover - defensive
             self.logger.error(f"Failed to load config: {exc}")
             return config
+
+    def save(self, path: Path, updates: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Save updates to the YAML config while preserving other keys.
+        Returns the resulting config dict.
+        """
+        try:
+            current = self.load(path)
+            # Merge current + updates first
+            to_save: Dict[str, Any] = {}
+            to_save.update(current)
+            to_save.update(updates)
+
+            # Convert any Path objects (including those from 'current') to strings recursively
+            def _serialize(val: Any) -> Any:
+                if isinstance(val, Path):
+                    return str(val)
+                if isinstance(val, list):
+                    return [_serialize(x) for x in val]
+                if isinstance(val, dict):
+                    return {k: _serialize(v) for k, v in val.items()}
+                return val
+            to_save = _serialize(to_save)
+
+            # Ensure only known keys are persisted to keep file tidy
+            ordered: Dict[str, Any] = {k: to_save.get(k, DEFAULT_CONFIG[k]) for k in DEFAULT_CONFIG.keys()}
+
+            path.parent.mkdir(parents=True, exist_ok=True)
+            import yaml as _yaml  # local import for save
+            with path.open("w", encoding="utf-8") as f:
+                _yaml.safe_dump(ordered, f, sort_keys=False)
+
+            self.logger.debug(f"Saved configuration to {path}")
+            # Return unified with normalized DatasetDirectory as Path
+            result = self.load(path)
+            return result
+        except Exception as exc:
+            self.logger.error(f"Failed to save config: {exc}")
+            return self.load(path)

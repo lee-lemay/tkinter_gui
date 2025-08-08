@@ -12,6 +12,7 @@ from pathlib import Path
 from enum import Enum
 import pandas as pd
 import json
+from ..utils.config_loader import ConfigLoader
 
 
 class DatasetStatus(Enum):
@@ -54,29 +55,37 @@ class ApplicationState:
     def __init__(self):
         """Initialize the application state."""
         self.logger = logging.getLogger(__name__)
-        
+
         # Dataset management
         self._dataset_directory: Optional[Path] = None
         self._datasets: Dict[str, DatasetInfo] = {}
         self._selected_datasets: List[str] = []
         self._focus_dataset: Optional[str] = None
-        
+
         # UI state
         self._current_view: str = "overview"
         self._left_panel_visible: bool = True
         self._right_panel_visible: bool = True
-        
+
         # Processing state
         self._processing_status: str = "idle"
         self._processing_progress: float = 0.0
-        
+
         # Observers for state changes (for MVC communication)
         self._observers: List[Any] = []
 
         # Recent directories (limited to 5 most recent, persistent across sessions)
         self._recent_directories: List[str] = []
         self._max_recent_directories: int = 5
-        
+
+        # Per-dataset configuration snapshots (read-only display)
+        # Maps dataset name -> config dict captured at load time or provided by controller
+        self._dataset_configs: Dict[str, Dict[str, Any]] = {}
+
+        # Config management
+        self._config_loader = ConfigLoader(self.logger)
+        self._config_path: Path = (Path(__file__).resolve().parents[2] / "config.yaml")
+
         # Application configuration (loaded at startup)
         # ForceUpdate: whether to re-scan/reload datasets forcefully
         # MetricMethod: error metric method name (e.g., 'Haversine')
@@ -84,11 +93,10 @@ class ApplicationState:
         self._force_update: bool = False
         self._metric_method: str = "Haversine"
         self._distance_threshold: float = 1000.0
-        
-        # Load recent directories from previous sessions
-        self._load_recent_directories()
-        
-        
+
+        # Load configuration (includes recent directories)
+        self._load_configuration()
+
         self.logger.info("Application state initialized")
 
     def send_controller_changed_message(self):
@@ -110,6 +118,11 @@ class ApplicationState:
         if value != self._force_update:
             self._force_update = bool(value)
             self.logger.debug(f"Config changed: force_update={self._force_update}")
+            # Persist to config file
+            try:
+                self._config_loader.save(self._config_path, {"ForceUpdate": self._force_update})
+            except Exception as e:
+                self.logger.warning(f"Failed to persist ForceUpdate: {e}")
             self._notify_observers("config_changed")
 
     @property
@@ -121,6 +134,10 @@ class ApplicationState:
         if value and value != self._metric_method:
             self._metric_method = str(value)
             self.logger.debug(f"Config changed: metric_method={self._metric_method}")
+            try:
+                self._config_loader.save(self._config_path, {"MetricMethod": self._metric_method})
+            except Exception as e:
+                self.logger.warning(f"Failed to persist MetricMethod: {e}")
             self._notify_observers("config_changed")
 
     @property
@@ -136,6 +153,10 @@ class ApplicationState:
         if v != self._distance_threshold:
             self._distance_threshold = v
             self.logger.debug(f"Config changed: distance_threshold={self._distance_threshold}")
+            try:
+                self._config_loader.save(self._config_path, {"DistanceThreshold": self._distance_threshold})
+            except Exception as e:
+                self.logger.warning(f"Failed to persist DistanceThreshold: {e}")
             self._notify_observers("config_changed")
     
     # Dataset Directory Management
@@ -150,6 +171,14 @@ class ApplicationState:
         if path != self._dataset_directory:
             self._dataset_directory = path
             self.logger.info(f"Dataset directory set to: {path}")
+            # Persist to config and maintain recent list
+            try:
+                if path is not None:
+                    # Persist as string to YAML
+                    self._config_loader.save(self._config_path, {"DatasetDirectory": str(Path(path))})
+                    self.add_recent_directory(str(path))
+            except Exception as e:
+                self.logger.warning(f"Failed to persist DatasetDirectory: {e}")
             self._notify_observers("dataset_directory_changed")
     
     # Dataset Management
@@ -175,6 +204,11 @@ class ApplicationState:
             
             if self._focus_dataset == dataset_name:
                 self._focus_dataset = None
+
+            # Remove any associated config snapshot
+            if dataset_name in self._dataset_configs:
+                del self._dataset_configs[dataset_name]
+                self._notify_observers("dataset_config_changed")
             
             self.logger.debug(f"Removed dataset: {dataset_name}")
             self._notify_observers("datasets_changed")
@@ -184,8 +218,10 @@ class ApplicationState:
         self._datasets.clear()
         self._selected_datasets.clear()
         self._focus_dataset = None
+        self._dataset_configs.clear()
         self.logger.info("All datasets cleared")
         self._notify_observers("datasets_changed")
+        self._notify_observers("dataset_config_changed")
     
     # Dataset Selection Management
     @property
@@ -337,6 +373,39 @@ class ApplicationState:
             "current_view": self._current_view,
             "processing_status": self._processing_status
         }
+
+    # Dataset Config Snapshots (read-only display support)
+    def set_dataset_config(self, dataset_name: str, config: Dict[str, Any]):
+        """Associate a configuration snapshot with a dataset (overwrites existing)."""
+        try:
+            # Store a shallow copy to decouple from caller
+            self._dataset_configs[dataset_name] = dict(config) if config is not None else {}
+            self.logger.debug(f"Config snapshot set for dataset '{dataset_name}' with keys: {list(self._dataset_configs[dataset_name].keys())}")
+            self._notify_observers("dataset_config_changed")
+        except Exception as e:
+            self.logger.error(f"Error setting dataset config for '{dataset_name}': {e}")
+
+    def get_dataset_config(self, dataset_name: Optional[str]) -> Optional[Dict[str, Any]]:
+        """Get the configuration snapshot associated with a dataset, if any."""
+        if not dataset_name:
+            return None
+        return self._dataset_configs.get(dataset_name)
+
+    def capture_active_config_for_dataset(self, dataset_name: str):
+        """Capture the current active config values and associate with the dataset if not already set."""
+        try:
+            if dataset_name not in self._dataset_configs:
+                cfg = {
+                    "ForceUpdate": bool(self._force_update),
+                    "MetricMethod": str(self._metric_method),
+                    "DistanceThreshold": float(self._distance_threshold),
+                    "DatasetDirectory": str(self._dataset_directory) if self._dataset_directory else None,
+                }
+                self._dataset_configs[dataset_name] = cfg
+                self.logger.debug(f"Captured active config for dataset '{dataset_name}'")
+                self._notify_observers("dataset_config_changed")
+        except Exception as e:
+            self.logger.error(f"Error capturing active config for dataset '{dataset_name}': {e}")
         
     # Recent Directories Management
     @property
@@ -410,54 +479,67 @@ class ApplicationState:
             self.logger.error(f"Error removing recent directory: {e}")
     
     def _get_config_directory(self) -> Path:
-        """Get the application configuration directory."""
+        """Get the application configuration directory (legacy)."""
+        # Kept for backward compatibility; no longer primary config store
         config_dir = Path.home() / ".data_analysis_app"
         config_dir.mkdir(exist_ok=True)
         return config_dir
     
     def _save_recent_directories(self):
-        """Save recent directories to a persistent file."""
+        """Persist recent directories into config.yaml."""
         try:
-            config_file = self._get_config_directory() / "recent_directories.json"
-            
-            # Only save directories that still exist
+            # Only save existing directories
             existing_dirs = [d for d in self._recent_directories if Path(d).exists()]
-            
-            with open(config_file, 'w') as f:
-                json.dump(existing_dirs, f, indent=2)
-            
-            # Update the in-memory list if some directories were removed
-            if len(existing_dirs) != len(self._recent_directories):
-                self._recent_directories = existing_dirs
-            
-            self.logger.debug(f"Recent directories saved to: {config_file}")
-            
+            self._recent_directories = existing_dirs
+            self._config_loader.save(self._config_path, {"RecentDirectories": existing_dirs})
         except Exception as e:
             self.logger.error(f"Error saving recent directories: {e}")
     
     def _load_recent_directories(self):
-        """Load recent directories from persistent file."""
+        """Load recent directories from config.yaml or migrate from legacy JSON."""
         try:
-            config_file = self._get_config_directory() / "recent_directories.json"
-            
-            if config_file.exists():
-                with open(config_file, 'r') as f:
-                    loaded_dirs = json.load(f)
-                
-                # Validate that directories still exist
-                self._recent_directories = [d for d in loaded_dirs if Path(d).exists()]
-                
-                self.logger.debug(f"Recent directories loaded: {len(self._recent_directories)} items")
-                
-                # If some directories were invalid, save the cleaned list
-                if len(self._recent_directories) != len(loaded_dirs):
+            cfg = self._config_loader.load(self._config_path)
+            loaded_dirs = cfg.get("RecentDirectories", []) or []
+            # Validate that directories still exist
+            self._recent_directories = [d for d in loaded_dirs if Path(d).exists()]
+
+            # Migration: if legacy JSON exists, merge in and delete it
+            legacy = self._get_config_directory() / "recent_directories.json"
+            if legacy.exists():
+                try:
+                    with open(legacy, 'r') as f:
+                        legacy_dirs = json.load(f) or []
+                    for d in legacy_dirs:
+                        if d not in self._recent_directories and Path(d).exists():
+                            self._recent_directories.append(d)
+                    # Save to new config and remove legacy
                     self._save_recent_directories()
-            
-                # Notify observers
-                self._notify_observers("recent_directories_changed")
-            else:
-                self.logger.debug("No recent directories file found, starting with empty list")
-                
+                    legacy.unlink(missing_ok=True)
+                    self.logger.info("Migrated legacy recent_directories.json to config.yaml")
+                except Exception as me:
+                    self.logger.warning(f"Failed to migrate legacy recent directories: {me}")
+
+            self._notify_observers("recent_directories_changed")
         except Exception as e:
             self.logger.error(f"Error loading recent directories: {e}")
             self._recent_directories = []
+
+    def _load_configuration(self):
+        """Load configuration values into the model from config.yaml."""
+        try:
+            cfg = self._config_loader.load(self._config_path)
+            # Config values
+            self._force_update = bool(cfg.get("ForceUpdate", False))
+            if isinstance(cfg.get("MetricMethod"), str) and cfg.get("MetricMethod"):
+                self._metric_method = str(cfg["MetricMethod"])
+            try:
+                dt_val = cfg.get("DistanceThreshold")
+                if dt_val is not None:
+                    self._distance_threshold = float(dt_val)
+            except Exception:
+                pass
+
+            # Recent directories handled by dedicated loader
+            self._load_recent_directories()
+        except Exception as e:
+            self.logger.error(f"Error loading configuration: {e}")

@@ -1,9 +1,7 @@
-# Application configuration
-# Controls default behavior at startup. Values can be overridden in the UI later.
-
 ForceUpdate: false
 MetricMethod: Haversine
-DistanceThreshold: 1000
-
-# Absolute path to the datasets directory to load on startup
-DatasetDirectory: "C:\\Users\\LeeLemay\\Documents\\Projects\\Python\\tkinter_gui\\data"
+DistanceThreshold: 1000.0
+DatasetDirectory: C:\Users\LeeLemay\Documents\Projects\Python\tkinter_gui\data
+RecentDirectories:
+- C:\Users\LeeLemay\Documents\Projects\Python\tkinter_gui\data
+- C:\Users\LeeLemay\Documents\Projects\Python\tkinter_gui\logs
