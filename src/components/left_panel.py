@@ -134,15 +134,6 @@ class LeftPanel:
         buttons_frame = ttk.Frame(overview_frame)
         buttons_frame.pack(fill="x", pady=(5, 0))
         
-        # Use PKL files button
-        self.use_pkl_btn = ttk.Button(
-            buttons_frame,
-            text="Use PKL Files",
-            command=self._on_use_pkl_files,
-            state="disabled"
-        )
-        self.use_pkl_btn.pack(side="left", padx=(0, 5))
-        
         # Process datasets button
         self.process_btn = ttk.Button(
             buttons_frame,
@@ -151,6 +142,15 @@ class LeftPanel:
             state="disabled"
         )
         self.process_btn.pack(side="right")
+        
+        # Clear datasets button (to the left of Process Selected)
+        self.clear_btn = ttk.Button(
+            buttons_frame,
+            text="Clear",
+            command=self._on_clear_datasets
+        )
+        # Pack on the right after Process so it appears to the left of it
+        self.clear_btn.pack(side="right", padx=(0, 5))
     
     def _create_focus_section(self):
         """Create the current dataset focus section."""
@@ -201,15 +201,6 @@ class LeftPanel:
         # Processing controls (placeholder for future phases)
         controls_frame = ttk.Frame(focus_frame)
         controls_frame.pack(fill="x", pady=(10, 0))
-        
-        # Reprocess button
-        self.reprocess_btn = ttk.Button(
-            controls_frame,
-            text="Reprocess",
-            command=self._on_reprocess,
-            state="disabled"
-        )
-        self.reprocess_btn.pack(anchor="e")
 
     def _create_config_section(self):
         """Create configuration editor section at the bottom."""
@@ -274,10 +265,10 @@ class LeftPanel:
         self.ds_cfg_dir_var = tk.StringVar(value="-")
 
         rows = [
-            ("ForceUpdate:", self.ds_cfg_force_var),
-            ("MetricMethod:", self.ds_cfg_metric_var),
-            ("DistanceThreshold:", self.ds_cfg_dist_var),
-            ("DatasetDirectory:", self.ds_cfg_dir_var),
+            ("Force Update:", self.ds_cfg_force_var),
+            ("Metric Method:", self.ds_cfg_metric_var),
+            ("Distance Threshold:", self.ds_cfg_dist_var),
+            ("Dataset Directory:", self.ds_cfg_dir_var),
         ]
 
         for r, (label, var) in enumerate(rows):
@@ -342,19 +333,6 @@ class LeftPanel:
             # Load the dataset
             self.controller.load_single_dataset(dataset_name)
     
-    def _on_use_pkl_files(self):
-        """Handle Use PKL Files button click."""
-        self.logger.info("Use PKL files requested")
-        if self.controller:
-            # TODO: Implement PKL file loading in future phase
-            selected = self._get_selected_dataset_names()
-            if selected:
-                message = f"PKL file loading for:\\n\\n" + "\\n".join([f"• {name}" for name in selected])
-                message += "\\n\\nThis feature will be implemented in a future phase."
-                self.controller.view.show_info("PKL Loading", message)
-            else:
-                self.controller.view.show_info("No Selection", "Please select datasets first.")
-    
     def _on_process_datasets(self):
         """Handle Process Selected button click."""
         self.logger.info("Process datasets requested")
@@ -364,16 +342,21 @@ class LeftPanel:
                 self.controller.process_datasets(selected)
             else:
                 self.controller.view.show_info("No Selection", "Please select datasets to process.")
-    
-    def _on_reprocess(self):
-        """Handle Reprocess button click."""
-        self.logger.info("Reprocess requested")
+
+    def _on_clear_datasets(self):
+        """Handle Clear button click to remove all datasets and clear focus."""
+        self.logger.info("Clear datasets requested")
         if self.controller:
-            focus_dataset = self.controller.get_focus_dataset()
-            if focus_dataset:
-                self.controller.process_datasets([focus_dataset.name])
-            else:
-                self.controller.view.show_info("No Focus Dataset", "Please select a focus dataset first.")
+            try:
+                if hasattr(self.controller, 'clear_all_datasets'):
+                    self.controller.clear_all_datasets()
+                else:
+                    # Fallback: clear via model and clear focus
+                    state = self.controller.get_state()
+                    state.clear_datasets()
+                    self.controller.set_focus_dataset(None)
+            except Exception as e:
+                self.logger.error(f"Error clearing datasets: {e}")
 
     # Config Handlers
     def _on_config_force_changed(self):
@@ -577,11 +560,6 @@ class LeftPanel:
                 focus_info = state.get_focus_dataset_info()
                 self._update_focus_info(focus_info)
                 
-                # Enable/disable reprocess based on focus availability
-                if focus_info:
-                    self.reprocess_btn.configure(state="normal")
-                else:
-                    self.reprocess_btn.configure(state="disabled")
                 # Update dataset config view
                 self._sync_dataset_config_view()
             elif event in ("controller_changed", "config_changed", "dataset_directory_changed"):

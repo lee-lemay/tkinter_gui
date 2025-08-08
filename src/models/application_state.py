@@ -220,6 +220,8 @@ class ApplicationState:
         self._focus_dataset = None
         self._dataset_configs.clear()
         self.logger.info("All datasets cleared")
+        # Notify observers so views can reset
+        self._notify_observers("focus_changed")
         self._notify_observers("datasets_changed")
         self._notify_observers("dataset_config_changed")
     

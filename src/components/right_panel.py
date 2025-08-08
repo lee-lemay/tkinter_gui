@@ -275,27 +275,29 @@ class RightPanel:
             
             state = self.controller.get_state()
             
-            if event == "datasets_changed":
-                
-                # Check if focus dataset is loaded and auto-update all plots
+            if event in ("datasets_changed", "focus_changed"):
                 focus_info = state.get_focus_dataset_info()
                 if focus_info and focus_info.status.value == "loaded":
-                    for tab_name, tab_widget in self.tab_widgets.items():
+                    # Auto-update all tabs when we have a loaded focus dataset
+                    for _, tab_widget in self.tab_widgets.items():
                         if hasattr(tab_widget, 'auto_update'):
                             tab_widget.auto_update()
-                
-                self.logger.debug(f"Datasets changed, all plots refreshed")
-            
-            elif event == "focus_changed":
-                
-                # Auto-update all plots if focus dataset is loaded
-                focus_info = state.get_focus_dataset_info()
-                if focus_info and focus_info.status.value == "loaded":
-                    for tab_name, tab_widget in self.tab_widgets.items():
-                        if hasattr(tab_widget, 'auto_update'):
-                            tab_widget.auto_update()
-                
-                self.logger.debug(f"Focus changed, all plots refreshed")
+                    self.logger.debug(f"{event}: plots refreshed for loaded focus dataset")
+                else:
+                    # No focus or not loaded: clear all plots and reset tab widgets
+                    for _, tab_widget in self.tab_widgets.items():
+                        if hasattr(tab_widget, 'clear_plot'):
+                            try:
+                                tab_widget.clear_plot()
+                            except Exception:
+                                pass
+                        # Also trigger focus-change handling to reset control widgets if available
+                        if hasattr(tab_widget, 'on_focus_dataset_changed'):
+                            try:
+                                tab_widget.on_focus_dataset_changed()
+                            except Exception:
+                                pass
+                    self.logger.debug(f"{event}: no focus or not loaded; plots cleared and widgets reset")
             
         except Exception as e:
             self.logger.error(f"Error handling state change '{event}': {e}")
@@ -310,6 +312,7 @@ class RightPanel:
         """
         try:
             current_index = self.notebook.index(self.notebook.select())
-            return self.notebook.tab(current_index, "text")
+            return str(self.notebook.tab(current_index, "text") or "")
         except Exception as e:
             self.logger.error(f"Error getting current tab: {e}")
+            return ""
