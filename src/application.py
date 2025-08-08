@@ -8,10 +8,12 @@ and manages the application lifecycle.
 import tkinter as tk
 import logging
 from typing import Optional
+from pathlib import Path
 
 from .gui.main_window import MainWindow
 from .models.application_state import ApplicationState
 from .controllers.application_controller import ApplicationController
+from .utils.config_loader import ConfigLoader
 
 
 class DataAnalysisApp:
@@ -49,6 +51,9 @@ class DataAnalysisApp:
             # Initialize the model (application state)
             self.model = ApplicationState()
             
+            # Load configuration before wiring controller/view reactions
+            self._load_startup_configuration()
+            
             # Initialize the view (main window)
             self.view = MainWindow(self.root)
             
@@ -68,6 +73,45 @@ class DataAnalysisApp:
             self.logger.error(f"Failed to initialize application components: {e}")
             raise
     
+    def _load_startup_configuration(self):
+        """Load config.yaml and apply values into the model. Auto-load datasets if set."""
+        try:
+            # Ensure model is available for type checkers and at runtime
+            assert self.model is not None
+            model = self.model
+
+            config_path = Path(__file__).resolve().parent.parent / "config.yaml"
+            loader = ConfigLoader(self.logger)
+            cfg = loader.load(config_path)
+
+            # Apply configuration to model
+            model.force_update = bool(cfg.get("ForceUpdate", False))
+            metric = cfg.get("MetricMethod")
+            if isinstance(metric, str) and metric:
+                model.metric_method = metric
+            thresh = cfg.get("DistanceThreshold")
+            if thresh is not None:
+                model.distance_threshold = thresh
+
+            ds_dir = cfg.get("DatasetDirectory")
+            if ds_dir:
+                # Set now; actual scanning is triggered after controller is ready
+                model.dataset_directory = Path(ds_dir)
+                # Add to recent now so it's visible immediately
+                model.add_recent_directory(str(ds_dir))
+                # Defer actual loading until controller exists: handled in run()
+                self._pending_startup_dataset_dir = Path(ds_dir)
+            else:
+                self._pending_startup_dataset_dir = None
+
+            self.logger.debug(
+                f"Startup config applied: force={model.force_update}, metric={model.metric_method}, "
+                f"threshold={model.distance_threshold}, dataset_dir={model.dataset_directory}"
+            )
+        except Exception as e:
+            self.logger.error(f"Error loading startup configuration: {e}")
+            self._pending_startup_dataset_dir = None
+
     def run(self):
         """
         Start the application main loop.
@@ -82,6 +126,15 @@ class DataAnalysisApp:
             self.root.title("Data Analysis Application")
             self.root.geometry("1200x800")
             self.root.minsize(800, 600)
+
+            # If a startup dataset directory was configured, kick off loading now
+            try:
+                if getattr(self, "_pending_startup_dataset_dir", None) and self.controller:
+                    # Use controller API so scanning happens in background and UI updates
+                    self.controller.load_dataset_directory(str(self._pending_startup_dataset_dir))
+            finally:
+                # Clear the pending flag to avoid reloading on subsequent runs
+                self._pending_startup_dataset_dir = None
             
             # Start the tkinter main loop
             self.root.mainloop()

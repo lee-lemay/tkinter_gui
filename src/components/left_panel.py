@@ -64,12 +64,6 @@ class LeftPanel:
         
         # Current Dataset Focus Section
         self._create_focus_section()
-        
-        # Separator
-        ttk.Separator(self.frame, orient="horizontal").pack(fill="x", padx=10, pady=10)
-        
-        # Dataset Selection Controls
-        self._create_selection_controls()
     
     def _create_dataset_overview_section(self):
         """Create the dataset overview section."""
@@ -206,18 +200,6 @@ class LeftPanel:
         range_entry.pack(side="left")
         ttk.Label(range_frame, text="meters").pack(side="left", padx=(5, 0))
         
-        # Method selection
-        ttk.Label(controls_frame, text="Method:").pack(anchor="w")
-        self.method_var = tk.StringVar(value="Nearest Neighbor")
-        method_combo = ttk.Combobox(
-            controls_frame,
-            textvariable=self.method_var,
-            values=["Nearest Neighbor", "Hungarian", "Global Nearest"],
-            state="readonly",
-            width=18
-        )
-        method_combo.pack(fill="x", pady=(2, 5))
-        
         # Reprocess button
         self.reprocess_btn = ttk.Button(
             controls_frame,
@@ -226,52 +208,6 @@ class LeftPanel:
             state="disabled"
         )
         self.reprocess_btn.pack(anchor="e")
-    
-    def _create_selection_controls(self):
-        """Create the dataset selection controls section."""
-        # Section header
-        selection_frame = ttk.LabelFrame(self.frame, text="Selection Controls", padding=5)
-        selection_frame.pack(fill="x", padx=10, pady=5)
-        
-        # Focus dataset selection
-        ttk.Label(selection_frame, text="Focus Dataset:").pack(anchor="w")
-        self.focus_combo_var = tk.StringVar()
-        self.focus_combo = ttk.Combobox(
-            selection_frame,
-            textvariable=self.focus_combo_var,
-            state="readonly",
-            width=25
-        )
-        self.focus_combo.pack(fill="x", pady=(2, 5))
-        self.focus_combo.bind("<<ComboboxSelected>>", self._on_focus_changed)
-        
-        # Selection buttons
-        buttons_frame = ttk.Frame(selection_frame)
-        buttons_frame.pack(fill="x")
-        
-        # Select All button
-        select_all_btn = ttk.Button(
-            buttons_frame,
-            text="Select All",
-            command=self._on_select_all
-        )
-        select_all_btn.pack(side="left")
-        
-        # Select None button
-        select_none_btn = ttk.Button(
-            buttons_frame,
-            text="Select None",
-            command=self._on_select_none
-        )
-        select_none_btn.pack(side="left", padx=(5, 0))
-        
-        # Refresh button
-        refresh_btn = ttk.Button(
-            buttons_frame,
-            text="Refresh",
-            command=self._on_refresh
-        )
-        refresh_btn.pack(side="right")
     
     # Event Handlers
     def _on_dataset_selection(self, event):
@@ -324,44 +260,6 @@ class LeftPanel:
                 self.controller.process_datasets([focus_dataset.name])
             else:
                 self.controller.view.show_info("No Focus Dataset", "Please select a focus dataset first.")
-    
-    def _on_focus_changed(self, event):
-        """Handle focus dataset selection change."""
-        selected = self.focus_combo_var.get()
-        self.logger.debug(f"Focus dataset changed to: {selected}")
-        if self.controller and selected:
-            self.controller.set_focus_dataset(selected)
-    
-    def _on_select_all(self):
-        """Handle Select All button click."""
-        self.logger.debug("Select all datasets")
-        if self.controller:
-            state = self.controller.get_state()
-            dataset_names = list(state.datasets.keys())
-            
-            # Mark all items as selected in the tree (visual feedback)
-            for item in self.dataset_tree.get_children():
-                self.dataset_tree.selection_add(item)
-                
-            # Add all to controller selection
-            state.set_selected_datasets(dataset_names)
-    
-    def _on_select_none(self):
-        """Handle Select None button click."""
-        self.logger.debug("Select no datasets")
-        if self.controller:
-            # Clear tree selection
-            self.dataset_tree.selection_remove(self.dataset_tree.selection())
-            
-            # Clear controller selection
-            state = self.controller.get_state()
-            state.set_selected_datasets([])
-    
-    def _on_refresh(self):
-        """Handle Refresh button click."""
-        self.logger.info("Refresh requested")
-        if self.controller:
-            self.controller.refresh_datasets()
     
     # Helper Methods
     def _get_selected_dataset_names(self):
@@ -519,11 +417,8 @@ class LeftPanel:
             if event == "datasets_changed":
                 self._update_dataset_tree(state.datasets)
                 
-                # Update focus combo
+                # Update button states (enable Process when datasets exist)
                 dataset_names = list(state.datasets.keys())
-                self.focus_combo.configure(values=dataset_names)
-                
-                # Update button states
                 has_datasets = len(dataset_names) > 0
                 self.process_btn.configure(state="normal" if has_datasets else "disabled")
             
@@ -531,11 +426,10 @@ class LeftPanel:
                 focus_info = state.get_focus_dataset_info()
                 self._update_focus_info(focus_info)
                 
+                # Enable/disable reprocess based on focus availability
                 if focus_info:
-                    self.focus_combo_var.set(focus_info.name)
                     self.reprocess_btn.configure(state="normal")
                 else:
-                    self.focus_combo_var.set("")
                     self.reprocess_btn.configure(state="disabled")
             
         except Exception as e:

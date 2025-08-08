@@ -77,6 +77,14 @@ class ApplicationState:
         self._recent_directories: List[str] = []
         self._max_recent_directories: int = 5
         
+        # Application configuration (loaded at startup)
+        # ForceUpdate: whether to re-scan/reload datasets forcefully
+        # MetricMethod: error metric method name (e.g., 'Haversine')
+        # DistanceThreshold: numeric threshold in meters
+        self._force_update: bool = False
+        self._metric_method: str = "Haversine"
+        self._distance_threshold: float = 1000.0
+        
         # Load recent directories from previous sessions
         self._load_recent_directories()
         
@@ -91,6 +99,44 @@ class ApplicationState:
         """
         self.logger.debug("Sending controller changed message to observers")
         self._notify_observers("controller_changed")
+    
+    # Configuration Management
+    @property
+    def force_update(self) -> bool:
+        return self._force_update
+
+    @force_update.setter
+    def force_update(self, value: bool):
+        if value != self._force_update:
+            self._force_update = bool(value)
+            self.logger.debug(f"Config changed: force_update={self._force_update}")
+            self._notify_observers("config_changed")
+
+    @property
+    def metric_method(self) -> str:
+        return self._metric_method
+
+    @metric_method.setter
+    def metric_method(self, value: str):
+        if value and value != self._metric_method:
+            self._metric_method = str(value)
+            self.logger.debug(f"Config changed: metric_method={self._metric_method}")
+            self._notify_observers("config_changed")
+
+    @property
+    def distance_threshold(self) -> float:
+        return self._distance_threshold
+
+    @distance_threshold.setter
+    def distance_threshold(self, value: float):
+        try:
+            v = float(value)
+        except Exception:
+            v = self._distance_threshold
+        if v != self._distance_threshold:
+            self._distance_threshold = v
+            self.logger.debug(f"Config changed: distance_threshold={self._distance_threshold}")
+            self._notify_observers("config_changed")
     
     # Dataset Directory Management
     @property
