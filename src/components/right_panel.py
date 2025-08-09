@@ -16,10 +16,14 @@ from ..plotting.backends import MatplotlibBackend
 from ..plotting.statistics_tab import StatisticsTabWidget
 from ..plotting.overview_tab import OverviewTabWidget
 from ..plotting.geospatial_tab import GeospatialTabWidget
-from ..plotting.error_analysis_tab import ErrorAnalysisTabWidget
-from ..plotting.rms_error_tab import RMSErrorTabWidget
 from ..plotting.lifetime_tab import LifetimeTabWidget
 from ..plotting.animation_tab import AnimationTabWidget
+from ..plotting.xy_plot_tab import XYPlotTabWidget
+from ..plotting.xy_config_formatters import (
+    example_tracks_lat_lon_over_time,
+    error_north_east_over_time,
+    rms_error_3d_over_time,
+)
 
 
 class RightPanel:
@@ -90,27 +94,24 @@ class RightPanel:
         self._create_tabs()
     
     def _create_tabs(self):
-        """Create the analysis view tabs with matplotlib integration for Phase 5."""
-        # Overview Tab
-        self._create_overview_tab()
-        
-        # Statistics Tab
-        self._create_statistics_tab()
-        
-        # Lat/Lon Scatter Tab
-        self._create_geospatial_tab()
-
-        # North/East Errors Tab
-        self._create_error_analysis_tab()
-
-        # RMS Error Tab
-        self._create_rms_error_tab()
-
-        # Track lifetime tab
-        self._create_lifetime_tab()
-
-        # Animation Tab
-        self._create_animation_tab()
+            """Create the analysis view tabs with matplotlib integration for Phase 5."""
+            # Overview Tab
+            self._create_overview_tab()
+            # Statistics Tab
+            self._create_statistics_tab()
+            # Lat/Lon Scatter Tab
+            self._create_geospatial_tab()
+            # (Removed) Legacy bespoke North/East Errors and RMS Error tabs replaced by generic XY equivalents
+            # Generic XY RMS Error mirror tab
+            self._create_xy_rms_error_tab(include_track_selection=True)
+            # Track lifetime tab
+            self._create_lifetime_tab()
+            # Animation Tab
+            self._create_animation_tab()
+            # Generic XY Tab (with optional data selection widgets enabled)
+            self._create_xy_plot_tab(include_data_selection=True)
+            # Generic XY Error Analysis mirror tab (uses formatter to replicate errors)
+            self._create_xy_error_tab(include_data_selection=True)
     
     def _create_overview_tab(self):
         """Create the overview tab using modular widget architecture."""
@@ -172,45 +173,6 @@ class RightPanel:
             self.tab_widgets = {}
         self.tab_widgets['geospatial'] = self.geospatial_tab
     
-    def _create_error_analysis_tab(self):
-        """Create the error analysis tab using modular widget architecture."""
-        # Create backend for this tab
-        error_analysis_backend = MatplotlibBackend()
-        
-        # Create the error analysis tab widget
-        self.error_analysis_tab = ErrorAnalysisTabWidget(self.notebook, error_analysis_backend)
-        self.notebook.add(self.error_analysis_tab, text="North/East Errors")
-        
-        # Set dependencies
-        if hasattr(self, 'controller'):
-            self.error_analysis_tab.set_controller(self.controller)
-        if hasattr(self, 'plot_manager'):
-            self.error_analysis_tab.set_plot_manager(self.plot_manager)
-        
-        # Store reference in the tab widgets dict
-        if not hasattr(self, 'tab_widgets'):
-            self.tab_widgets = {}
-        self.tab_widgets['error_analysis'] = self.error_analysis_tab
-    
-    def _create_rms_error_tab(self):
-        """Create the RMS error tab using modular widget architecture."""
-        # Create backend for this tab
-        rms_error_backend = MatplotlibBackend()
-        
-        # Create the RMS error tab widget
-        self.rms_error_tab = RMSErrorTabWidget(self.notebook, rms_error_backend)
-        self.notebook.add(self.rms_error_tab, text="RMS Error")
-        
-        # Set dependencies
-        if hasattr(self, 'controller'):
-            self.rms_error_tab.set_controller(self.controller)
-        if hasattr(self, 'plot_manager'):
-            self.rms_error_tab.set_plot_manager(self.plot_manager)
-        
-        # Store reference in the tab widgets dict
-        if not hasattr(self, 'tab_widgets'):
-            self.tab_widgets = {}
-        self.tab_widgets['rms_error_3d'] = self.rms_error_tab
     
     def _create_lifetime_tab(self):
         """Create the lifetime tab using modular widget architecture."""
@@ -251,6 +213,74 @@ class RightPanel:
         if not hasattr(self, 'tab_widgets'):
             self.tab_widgets = {}
         self.tab_widgets['animation'] = self.animation_tab
+
+    def _create_xy_plot_tab(self, include_data_selection: bool = True):
+        """Create the generic XY plot tab."""
+        xy_backend = MatplotlibBackend()
+        # Pass a default/example formatter; callers can later replace it via controller interaction if desired
+        self.xy_tab = XYPlotTabWidget(
+            self.notebook,
+            xy_backend,
+            include_data_selection=include_data_selection,
+            config_formatter=example_tracks_lat_lon_over_time,
+            formatter_widgets=[],
+        )
+        self.notebook.add(self.xy_tab, text="XY Plot")
+
+        if hasattr(self, 'controller'):
+            self.xy_tab.set_controller(self.controller)
+        if hasattr(self, 'plot_manager'):
+            self.xy_tab.set_plot_manager(self.plot_manager)
+
+        if not hasattr(self, 'tab_widgets'):
+            self.tab_widgets = {}
+        self.tab_widgets['xy_plot'] = self.xy_tab
+
+    def _create_xy_error_tab(self, include_data_selection: bool = True):
+        """Create a generic XY tab instance replicating the Error Analysis (north/east error) plot."""
+        xy_backend = MatplotlibBackend()
+        self.xy_error_tab = XYPlotTabWidget(
+            self.notebook,
+            xy_backend,
+            include_data_selection=False,  
+            include_track_selection=True,
+            config_formatter=error_north_east_over_time,
+            formatter_widgets=[],
+            title="XY Errors"
+        )
+        self.notebook.add(self.xy_error_tab, text="XY Errors")
+
+        if hasattr(self, 'controller'):
+            self.xy_error_tab.set_controller(self.controller)
+        if hasattr(self, 'plot_manager'):
+            self.xy_error_tab.set_plot_manager(self.plot_manager)
+
+        if not hasattr(self, 'tab_widgets'):
+            self.tab_widgets = {}
+        self.tab_widgets['xy_errors'] = self.xy_error_tab
+
+    def _create_xy_rms_error_tab(self, include_track_selection: bool = True):
+        """Create a generic XY tab instance replicating the RMS Error plot (time vs 3D RMS)."""
+        xy_backend = MatplotlibBackend()
+        self.xy_rms_error_tab = XYPlotTabWidget(
+            self.notebook,
+            xy_backend,
+            include_data_selection=False,
+            include_track_selection=include_track_selection,
+            config_formatter=rms_error_3d_over_time,
+            formatter_widgets=[],
+            title="XY RMS Error"
+        )
+        self.notebook.add(self.xy_rms_error_tab, text="XY RMS Error")
+
+        if hasattr(self, 'controller'):
+            self.xy_rms_error_tab.set_controller(self.controller)
+        if hasattr(self, 'plot_manager'):
+            self.xy_rms_error_tab.set_plot_manager(self.plot_manager)
+
+        if not hasattr(self, 'tab_widgets'):
+            self.tab_widgets = {}
+        self.tab_widgets['xy_rms_error'] = self.xy_rms_error_tab
     
     def _on_tab_changed(self, event):
         """Handle tab change events."""

@@ -16,7 +16,7 @@ from src import data
 class PlotResult:
     """Represents the result of a plot operation."""
     
-    def __init__(self, success: bool, plot_object: Any = None, error: str = None):
+    def __init__(self, success: bool, plot_object: Any = None, error: Optional[str] = None):
         self.success = success
         self.plot_object = plot_object
         self.error = error
@@ -281,6 +281,9 @@ class MatplotlibBackend(PlotBackend):
             elif plot_type == 'animation_frame':
                 config['plot_mode'] = 'trajectory'
                 self._plot_geospatial_data(ax, data, config)
+            
+            elif plot_type == 'generic_xy':
+                self._plot_generic_xy(ax, data, config)
             else:
                 raise ValueError(f"Unsupported plot type: {plot_type}")
             
@@ -670,3 +673,39 @@ class MatplotlibBackend(PlotBackend):
         except Exception:
             pass
         return None, None
+
+    def _plot_generic_xy(self, ax, data: Dict[str, Any], config: Dict[str, Any]):
+        """Render generic XY series passed from PlotManager."""
+        series = data.get('series', {})
+        if not series or 'x' not in series:
+            ax.text(0.5, 0.5, 'No data', ha='center', va='center', transform=ax.transAxes, color='gray')
+            return
+
+        x = series['x']
+        default_style = (config or {}).get('style', 'line')
+        series_styles = (data or {}).get('series_styles') or (config or {}).get('series_styles') or {}
+
+        for key, values in series.items():
+            if key == 'x':
+                continue
+            sconf       = series_styles.get(key, {}) if isinstance(series_styles, dict) else {}
+            ptype       = sconf.get('type', default_style)  # 'line' | 'scatter'
+            color       = sconf.get('color')
+            marker      = sconf.get('marker')  # e.g., 'o', '^', 's'
+            linestyle   = sconf.get('linestyle', '-') if ptype == 'line' else 'None'
+            linewidth   = sconf.get('linewidth', 2)
+            alpha       = sconf.get('alpha', 0.9)
+            label       = sconf.get('label', key)
+            markersize  = sconf.get('markersize', 36 if ptype == 'scatter' else 6)
+
+            if ptype == 'scatter':
+                ax.scatter(x, values, s=markersize, alpha=alpha, label=label, c=color, marker=marker)
+            else:
+                ax.plot(x, values, linestyle, linewidth=linewidth, alpha=alpha, label=label, color=color, marker=marker)
+
+        # Titles and labels
+        ax.set_title((config or {}).get('title', data.get('title', 'XY Plot')), fontsize=14, fontweight='bold')
+        ax.set_xlabel((config or {}).get('xlabel', data.get('xlabel', 'X')), fontsize=12)
+        ax.set_ylabel((config or {}).get('ylabel', data.get('ylabel', 'Y')), fontsize=12)
+        ax.grid(True, alpha=0.3)
+        ax.legend()

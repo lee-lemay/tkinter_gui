@@ -75,6 +75,12 @@ class PlotManager:
                 'description': 'Sample mathematical functions demonstration',
                 'requires_focus': False,
                 'requires_multiple': False
+            },
+            'generic_xy': {
+                'name': 'Generic XY',
+                'description': 'Configurable XY plot from selected source dataframe',
+                'requires_focus': True,
+                'requires_multiple': False
             }
         }
         
@@ -165,6 +171,8 @@ class PlotManager:
                 return self._prepare_animation_data(app_state, plot_config)
             elif plot_id == 'demo_plot':
                 return self._prepare_demo_data(app_state, plot_config)
+            elif plot_id == 'generic_xy':
+                return self._prepare_generic_xy_data(app_state, plot_config)
             else:
                 raise ValueError(f"Unknown plot type: {plot_id}")
         
@@ -350,6 +358,143 @@ class PlotManager:
             'demo_data': True,
             'title': 'Demo Plot - Mathematical Functions',
             'plot_type': 'line'
+        }
+
+    def _prepare_generic_xy_data(self, app_state: ApplicationState, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Prepare data for a generic, configurable XY plot.
+
+        Config keys (examples):
+          - x: column name for x values (schema mode) OR list-like of x values (pass-through mode)
+          - y: list[str] column names (schema mode) OR list-like/dict of series -> list-like (pass-through mode)
+          - source: 'tracks' | 'truth' | 'detections' (default 'tracks')
+          - tracks: list of track_ids or 'All'/'None' (optional; only used if present)
+          - truth: list of truth ids or 'All'/'None' (optional; only used if present)
+          - xlabel/ylabel/title/style: passed through to backend
+        Only filter/sort on ids if corresponding config keys are present.
+        """
+        focus = app_state.get_focus_dataset_info()
+        if not focus or focus.status.value != "loaded":
+            return {'error': 'No loaded focus dataset available'}
+
+        # Helper to coerce sequences (including pandas/np series) to list
+        def _to_list(obj):
+            try:
+                if obj is None:
+                    return []
+                if hasattr(obj, 'tolist'):
+                    return obj.tolist()
+                if isinstance(obj, (list, tuple)):
+                    return list(obj)
+                # Fallback: try to iterate
+                return list(obj)
+            except Exception:
+                return []
+
+        x_val = config.get('x')
+        y_val = config.get('y')
+        source = (config.get('source') or 'tracks').lower()
+
+        # Pass-through mode: x is not a string (i.e., direct values provided)
+        if x_val is not None and not isinstance(x_val, str):
+            x_series = _to_list(x_val)
+            if y_val is None:
+                return {'error': 'y values are required'}
+
+            series: Dict[str, Any] = {'x': x_series}
+            if isinstance(y_val, dict):
+                for name, arr in y_val.items():
+                    y_list = _to_list(arr)
+                    if len(y_list) != len(x_series):
+                        return {'error': f'Length mismatch for series \"{name}\": x({len(x_series)}) vs y({len(y_list)})'}
+                    series[name] = y_list
+            else:
+                y_list = _to_list(y_val)
+                if len(y_list) != len(x_series):
+                    return {'error': f'Length mismatch: x({len(x_series)}) vs y({len(y_list)})'}
+                # Use provided label if any, else default 'y'
+                series['y'] = y_list
+
+            return {
+                'series': series,
+                'title': config.get('title', 'XY Plot'),
+                'xlabel': config.get('xlabel', 'X'),
+                'ylabel': config.get('ylabel', 'Y'),
+                'style': config.get('style', 'line'),
+                'series_styles': config.get('series_styles')
+            }
+
+        # Schema mode: x/y are column names
+        x_col = x_val
+        y_cols = y_val or []
+        if not x_col or not y_cols:
+            return {'error': 'Both x and y must be provided'}
+
+        # Select source DataFrame
+        df = None
+        id_col = None
+        if source == 'truth':
+            df = focus.truth_df
+            id_col = 'id'
+        elif source == 'detections':
+            df = focus.detections_df
+            id_col = 'track_id' if (df is not None and 'track_id' in df.columns) else None
+        else:
+            df = focus.tracks_df
+            id_col = 'track_id'
+
+        if df is None or df.empty:
+            return {'error': f'No data available in source: {source}'}
+
+        # Apply optional filtering based on config
+        filtered = df
+        # Only filter by tracks if provided and applicable
+        if 'tracks' in config and id_col == 'track_id' and id_col in filtered.columns:
+            sel = config['tracks']
+            if sel == "None":
+                filtered = filtered.iloc[0:0]
+            elif isinstance(sel, list) and len(sel) > 0 and "All" not in sel:
+                filtered = filtered[filtered[id_col].isin(sel)]
+
+        # Only filter by truth ids if provided and applicable
+        if 'truth' in config and id_col == 'id' and id_col in filtered.columns:
+            sel = config['truth']
+            if sel == "None":
+                filtered = filtered.iloc[0:0]
+            elif isinstance(sel, list) and len(sel) > 0 and "All" not in sel:
+                filtered = filtered[filtered[id_col].isin(sel)]
+
+        if filtered.empty:
+            return {'error': 'No rows after filtering'}
+
+        # Build series for plotting; drop rows with NaNs in required columns
+        required_cols = [x_col] + y_cols
+        missing = [c for c in required_cols if c not in filtered.columns]
+        if missing:
+            return {'error': f'Missing columns in source: {missing}'}
+
+        filtered = filtered.dropna(subset=required_cols)
+        # If x is datetime, sort by x for line plots
+        try:
+            if filtered[x_col].dtype.kind == 'M':
+                filtered = filtered.sort_values(by=x_col)
+        except Exception:
+            pass
+
+        # Prepare output structure
+        series = {
+            'x': filtered[x_col].tolist()
+        }
+        for y in y_cols:
+            series[y] = filtered[y].tolist()
+
+        # Attach label suggestions (backend uses config for labels)
+        return {
+            'series': series,
+            'title': config.get('title', 'XY Plot'),
+            'xlabel': config.get('xlabel', 'X'),
+            'ylabel': config.get('ylabel', 'Y'),
+            'style': config.get('style', 'line'),
+            'series_styles': config.get('series_styles')
         }
     
     def validate_plot_requirements(self, plot_id: str, app_state: ApplicationState) -> Dict[str, Any]:

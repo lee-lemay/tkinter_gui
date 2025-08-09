@@ -20,8 +20,6 @@ from .control_widgets import (
 # Import all tab widget implementations
 from .overview_tab import OverviewTabWidget
 from .geospatial_tab import GeospatialTabWidget
-from .error_analysis_tab import ErrorAnalysisTabWidget
-from .rms_error_tab import RMSErrorTabWidget
 from .lifetime_tab import LifetimeTabWidget
 from .animation_tab import AnimationTabWidget
 from .statistics_tab import StatisticsTabWidget
