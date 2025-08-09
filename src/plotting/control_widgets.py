@@ -648,6 +648,7 @@ class TrackSelectionWidget(CollapsibleWidget):
         
         # Store original data for selection handling
         self.track_ids: List[str] = []
+        self._id_lookup: Dict[str, Any] = {}
         
         self._create_controls()
     
@@ -701,6 +702,7 @@ class TrackSelectionWidget(CollapsibleWidget):
             return
         
         self.track_ids = track_ids
+        self._id_lookup = {str(t): t for t in track_ids}
         
         # Add special options
         self.tracks_listbox.insert(0, "All Tracks")
@@ -718,7 +720,7 @@ class TrackSelectionWidget(CollapsibleWidget):
         if self.tracks_listbox and self.track_ids:
             self.tracks_listbox.selection_clear(0, tk.END)
             self.tracks_listbox.selection_set(0)  # Select "All Tracks"
-            for i in range(3, self.tracks_listbox.size()):  # Select all individual tracks
+            for i in range(2, self.tracks_listbox.size()):  # Select all individual tracks
                 self.tracks_listbox.selection_set(i)
             self._on_tracks_listbox_select()
     
@@ -749,7 +751,7 @@ class TrackSelectionWidget(CollapsibleWidget):
             # Select all tracks
             self.tracks_listbox.selection_clear(0, tk.END)
             self.tracks_listbox.selection_set(0)  # "All Tracks"
-            for i in range(3, self.tracks_listbox.size()):  # Skip "All", "None", separator
+            for i in range(2, self.tracks_listbox.size()):  # Skip "All", "None" 
                 self.tracks_listbox.selection_set(i)
             selected_tracks = self.track_ids
         elif "None" in selected_items:
@@ -832,12 +834,17 @@ class TrackSelectionWidget(CollapsibleWidget):
         elif "None" in selected_items:
             return []
         else:
-            # Extract IDs from "Track X" format
             selected_tracks = []
             for item in selected_items:
                 if item.startswith("Track ") and not item.startswith("─"):
-                    track_id = item.replace("Track ", "")
-                    selected_tracks.append(track_id)
+                    raw = item.replace("Track ", "")
+                    if raw in getattr(self, '_id_lookup', {}):
+                        selected_tracks.append(self._id_lookup[raw])
+                    else:
+                        try:
+                            selected_tracks.append(int(raw))
+                        except ValueError:
+                            selected_tracks.append(raw)
             return selected_tracks
     
     def get_selection(self) -> List[str]:

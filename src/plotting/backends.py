@@ -709,3 +709,18 @@ class MatplotlibBackend(PlotBackend):
         ax.set_ylabel((config or {}).get('ylabel', data.get('ylabel', 'Y')), fontsize=12)
         ax.grid(True, alpha=0.3)
         ax.legend()
+        # Custom y ticks (e.g., track lifetime) if provided
+        y_ticks_meta = (config or {}).get('y_ticks') or data.get('y_ticks')
+        if isinstance(y_ticks_meta, dict) and 'positions' in y_ticks_meta and 'labels' in y_ticks_meta:
+            try:
+                positions = y_ticks_meta['positions']
+                labels = y_ticks_meta['labels']
+                ax.set_yticks(positions)
+                ax.set_yticklabels(labels)
+                pad = y_ticks_meta.get('padding', 0)
+                if positions:
+                    ymin = min(positions) - pad
+                    ymax = max(positions) + pad
+                    ax.set_ylim(ymin, ymax)
+            except Exception as e:
+                self.logger.debug(f"Custom y ticks failed: {e}")

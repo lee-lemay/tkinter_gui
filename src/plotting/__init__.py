@@ -20,7 +20,6 @@ from .control_widgets import (
 # Import all tab widget implementations
 from .overview_tab import OverviewTabWidget
 from .geospatial_tab import GeospatialTabWidget
-from .lifetime_tab import LifetimeTabWidget
 from .animation_tab import AnimationTabWidget
 from .statistics_tab import StatisticsTabWidget
 
@@ -41,8 +40,5 @@ __all__ = [
     # Tab widgets
     'OverviewTabWidget',
     'GeospatialTabWidget',
-    'ErrorAnalysisTabWidget',
-    'RMSErrorTabWidget',
-    'LifetimeTabWidget',
     'AnimationTabWidget'
 ]

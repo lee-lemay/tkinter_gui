@@ -161,6 +161,9 @@ class XYPlotTabWidget(PlotTabWidget):
                     'xlabel': config.get('xlabel', 'X'),
                     'ylabel': config.get('ylabel', 'Y'),
                     'style': config.get('style', 'line'),
+                    # Pass through optional styling / axis meta
+                    'series_styles': config.get('series_styles'),
+                    'y_ticks': config.get('y_ticks'),
                 }
                 self.update_plot('generic_xy', plot_data, viz_cfg)
             else:

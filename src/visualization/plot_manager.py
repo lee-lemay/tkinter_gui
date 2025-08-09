@@ -6,7 +6,6 @@ data preparation, and coordination between the business logic and visualization 
 """
 
 import logging
-from logging import config
 from typing import Dict, List, Optional, Any, Tuple
 from pathlib import Path
 
@@ -385,8 +384,7 @@ class PlotManager:
                     return obj.tolist()
                 if isinstance(obj, (list, tuple)):
                     return list(obj)
-                # Fallback: try to iterate
-                return list(obj)
+                return list(obj)  # fallback iterator coercion
             except Exception:
                 return []
 
@@ -394,7 +392,7 @@ class PlotManager:
         y_val = config.get('y')
         source = (config.get('source') or 'tracks').lower()
 
-        # Pass-through mode: x is not a string (i.e., direct values provided)
+        # ---- Pass-through mode (x provided as concrete sequence) ----
         if x_val is not None and not isinstance(x_val, str):
             x_series = _to_list(x_val)
             if y_val is None:
@@ -405,25 +403,29 @@ class PlotManager:
                 for name, arr in y_val.items():
                     y_list = _to_list(arr)
                     if len(y_list) != len(x_series):
-                        return {'error': f'Length mismatch for series \"{name}\": x({len(x_series)}) vs y({len(y_list)})'}
+                        return {'error': f'Length mismatch for series "{name}": x({len(x_series)}) vs y({len(y_list)})'}
                     series[name] = y_list
             else:
                 y_list = _to_list(y_val)
                 if len(y_list) != len(x_series):
                     return {'error': f'Length mismatch: x({len(x_series)}) vs y({len(y_list)})'}
-                # Use provided label if any, else default 'y'
                 series['y'] = y_list
 
-            return {
+            out: Dict[str, Any] = {
                 'series': series,
                 'title': config.get('title', 'XY Plot'),
                 'xlabel': config.get('xlabel', 'X'),
                 'ylabel': config.get('ylabel', 'Y'),
                 'style': config.get('style', 'line'),
-                'series_styles': config.get('series_styles')
             }
+            # Pass through selected metadata keys
+            meta_keys = ['series_styles', 'y_ticks', 'x_ticks', 'xlim', 'ylim', 'legend', 'grid']
+            for k in meta_keys:
+                if k in config:
+                    out[k] = config[k]
+            return out
 
-        # Schema mode: x/y are column names
+        # ---- Schema mode (x/y reference dataframe columns) ----
         x_col = x_val
         y_cols = y_val or []
         if not x_col or not y_cols:
@@ -445,17 +447,15 @@ class PlotManager:
         if df is None or df.empty:
             return {'error': f'No data available in source: {source}'}
 
-        # Apply optional filtering based on config
         filtered = df
-        # Only filter by tracks if provided and applicable
+        # Track filtering
         if 'tracks' in config and id_col == 'track_id' and id_col in filtered.columns:
             sel = config['tracks']
             if sel == "None":
                 filtered = filtered.iloc[0:0]
             elif isinstance(sel, list) and len(sel) > 0 and "All" not in sel:
                 filtered = filtered[filtered[id_col].isin(sel)]
-
-        # Only filter by truth ids if provided and applicable
+        # Truth filtering
         if 'truth' in config and id_col == 'id' and id_col in filtered.columns:
             sel = config['truth']
             if sel == "None":
@@ -466,36 +466,34 @@ class PlotManager:
         if filtered.empty:
             return {'error': 'No rows after filtering'}
 
-        # Build series for plotting; drop rows with NaNs in required columns
         required_cols = [x_col] + y_cols
         missing = [c for c in required_cols if c not in filtered.columns]
         if missing:
             return {'error': f'Missing columns in source: {missing}'}
 
         filtered = filtered.dropna(subset=required_cols)
-        # If x is datetime, sort by x for line plots
         try:
             if filtered[x_col].dtype.kind == 'M':
                 filtered = filtered.sort_values(by=x_col)
         except Exception:
             pass
 
-        # Prepare output structure
-        series = {
-            'x': filtered[x_col].tolist()
-        }
+        series: Dict[str, Any] = {'x': filtered[x_col].tolist()}
         for y in y_cols:
             series[y] = filtered[y].tolist()
 
-        # Attach label suggestions (backend uses config for labels)
-        return {
+        out = {
             'series': series,
             'title': config.get('title', 'XY Plot'),
             'xlabel': config.get('xlabel', 'X'),
             'ylabel': config.get('ylabel', 'Y'),
             'style': config.get('style', 'line'),
-            'series_styles': config.get('series_styles')
         }
+        meta_keys = ['series_styles', 'y_ticks', 'x_ticks', 'xlim', 'ylim', 'legend', 'grid']
+        for k in meta_keys:
+            if k in config:
+                out[k] = config[k]
+        return out
     
     def validate_plot_requirements(self, plot_id: str, app_state: ApplicationState) -> Dict[str, Any]:
         """
