@@ -64,111 +64,29 @@ def _collect_track_errors(app_state, widgets: Sequence[Any], component: str) -> 
             continue
     return errors
 
-@register_hist_formatter('north_error_histogram')
-def north_error_histogram(app_state, widgets: Sequence[Any]) -> Dict[str, Any]:
-    """Build histogram config for north (latitudinal) error.
+def _build_error_histogram(app_state, widgets: Sequence[Any], component: str, title: str) -> Dict[str, Any]:
+    """Generic builder for error histograms (north/east) including optional secondary scatter.
 
-    Returns schema:
-    {
-      'histograms': [ {'values': [...], 'edges': [...], 'mean': m, 'std': s, 'style': {...}, 'bands': [...] } ],
-      'overlays': [],
-      'title': 'North Error Histogram'
-    }
-    Edges are 7 points (mean ± k*std for k=0..3) giving 6 bins.
+    If a HistogramControlWidget is present and a scatter variable selected, aggregates the
+    scatter variable values per error bin and produces a secondary-axis scatter overlay.
     """
-    vals = _collect_track_errors(app_state, widgets, 'north')
+    # Base errors
+    vals = _collect_track_errors(app_state, widgets, component)
     import numpy as np
     if not vals:
-        # Still return schema with empty histogram so downstream logic can handle gracefully
         return {
             'histograms': [
-                {
-                    'values': [], 'edges': [], 'mean': 0.0, 'std': 1.0,
-                    'style': {'outline_only': True, 'sigma_bands': True, 'mean_line': True},
-                }
+                {'values': [], 'edges': [], 'mean': 0.0, 'std': 1.0,
+                 'style': {'outline_only': True, 'sigma_bands': True, 'mean_line': True}}
             ],
             'overlays': [],
-            'title': 'North Error Histogram'
+            'title': title
         }
     arr = np.array(vals, dtype=float)
     mean = float(arr.mean())
     std = float(arr.std(ddof=0)) or 1.0
-    # Detect histogram control widget (first instance found)
-    hist_ctrl = None
-    for w in widgets:
-        if w.__class__.__name__ == 'HistogramControlWidget':  # avoid import cycle
-            hist_ctrl = w
-            break
-    extent_sigma = 4.0
-    bins_requested = 7
-    gaussian_overlay = False
-    scatter_var = None
-    scatter_enabled = False
-    if hist_ctrl:
-        try:
-            extent_sigma = max(1.0, min(8.0, hist_ctrl.get_sigma_extent()))
-            bins_requested = hist_ctrl.get_bin_count()
-            gaussian_overlay = hist_ctrl.gaussian_overlay_enabled()
-            scatter_enabled = hist_ctrl.scatter_overlay_enabled()
-            scatter_var = hist_ctrl.get_scatter_variable()
-        except Exception:
-            pass
-    # Ensure odd bin count
-    if bins_requested % 2 == 0:
-        bins_requested += 1
-    half_bins_each_side = (bins_requested - 1)//2
-    # Build edges centered at mean across ±extent_sigma using equal-width bins
-    import numpy as np
-    left = mean - extent_sigma*std
-    right = mean + extent_sigma*std
-    edges = np.linspace(left, right, bins_requested+1).tolist()
-    hist = {
-        'values': arr.tolist(),
-        'edges': edges,
-        'mean': mean,
-        'std': std,
-        'style': {'outline_only': True, 'sigma_bands': True, 'mean_line': True, 'color': 'black', 'mean_label': 'Mean'},
-    }
-    overlays: List[Dict[str, Any]] = []
-    if gaussian_overlay:
-        try:
-            xs = np.linspace(left, right, 200)
-            # Normal PDF scaled to approximate counts (multiply by total samples * bin width)
-            bin_width = (right-left)/bins_requested if bins_requested else 1
-            pdf = (1.0/(std*np.sqrt(2*np.pi))) * np.exp(-0.5*((xs-mean)/std)**2)
-            scaled = pdf * len(arr) * bin_width
-            overlays.append({'x': xs.tolist(), 'y': scaled.tolist(), 'style': {'type':'line','color':'black','label':'Gaussian'}})
-        except Exception:
-            pass
-    # Optional scatter overlay placeholder (secondary axis not yet in backend; include style hint)
-    if scatter_enabled and scatter_var:
-        overlays.append({'x': [mean], 'y': [0], 'style': {'type':'scatter','color':'red','label':f'{scatter_var} (scatter)','secondary_y': True}})
-    return {
-        'histograms': [hist],
-        'overlays': overlays,
-        'title': 'North Error Histogram'
-    }
 
-@register_hist_formatter('east_error_histogram')
-def east_error_histogram(app_state, widgets: Sequence[Any]) -> Dict[str, Any]:
-    """Build histogram config for east (longitudinal) error."""
-    vals = _collect_track_errors(app_state, widgets, 'east')
-    import numpy as np
-    if not vals:
-        return {
-            'histograms': [
-                {
-                    'values': [], 'edges': [], 'mean': 0.0, 'std': 1.0,
-                    'style': {'outline_only': True, 'sigma_bands': True, 'mean_line': True},
-                }
-            ],
-            'overlays': [],
-            'title': 'East Error Histogram'
-        }
-    arr = np.array(vals, dtype=float)
-    mean = float(arr.mean())
-    std = float(arr.std(ddof=0)) or 1.0
-    # Shared control extraction logic
+    # Control widget detection
     hist_ctrl = None
     for w in widgets:
         if w.__class__.__name__ == 'HistogramControlWidget':
@@ -190,10 +108,11 @@ def east_error_histogram(app_state, widgets: Sequence[Any]) -> Dict[str, Any]:
             pass
     if bins_requested % 2 == 0:
         bins_requested += 1
-    import numpy as np
     left = mean - extent_sigma*std
     right = mean + extent_sigma*std
-    edges = np.linspace(left, right, bins_requested+1).tolist()
+    edges_arr = np.linspace(left, right, bins_requested + 1)
+    edges = edges_arr.tolist()
+
     hist = {
         'values': arr.tolist(),
         'edges': edges,
@@ -201,23 +120,80 @@ def east_error_histogram(app_state, widgets: Sequence[Any]) -> Dict[str, Any]:
         'std': std,
         'style': {'outline_only': True, 'sigma_bands': True, 'mean_line': True, 'color': 'black', 'mean_label': 'Mean'},
     }
+
     overlays: List[Dict[str, Any]] = []
+    # Gaussian overlay
     if gaussian_overlay:
         try:
             xs = np.linspace(left, right, 200)
-            bin_width = (right-left)/bins_requested if bins_requested else 1
-            pdf = (1.0/(std*np.sqrt(2*np.pi))) * np.exp(-0.5*((xs-mean)/std)**2)
+            bin_width = (right - left) / bins_requested if bins_requested else 1
+            pdf = (1.0 / (std * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((xs - mean) / std) ** 2)
             scaled = pdf * len(arr) * bin_width
-            overlays.append({'x': xs.tolist(), 'y': scaled.tolist(), 'style': {'type':'line','color':'black','label':'Gaussian'}})
+            overlays.append({'x': xs.tolist(), 'y': scaled.tolist(), 'style': {'type': 'line', 'color': 'black', 'label': 'Gaussian'}})
         except Exception:
             pass
+
+    # Secondary scatter overlay (bin-averaged scatter variable)
     if scatter_enabled and scatter_var:
-        overlays.append({'x': [mean], 'y': [0], 'style': {'type':'scatter','color':'red','label':f'{scatter_var} (scatter)','secondary_y': True}})
+        try:
+            focus = FS.get_focus_or_empty(app_state)
+            tracks_df = focus.tracks_df if focus else None
+            truth_df = focus.truth_df if focus else None
+            if tracks_df is not None and truth_df is not None and not tracks_df.empty and scatter_var in tracks_df.columns:
+                # Re-run per-row loop to align scatter values with error values
+                scatter_vals: List[float] = []
+                error_vals: List[float] = []
+                for _, row in tracks_df.iterrows():
+                    try:
+                        diffs = abs(truth_df['timestamp'] - row['timestamp'])
+                        idx = diffs.idxmin()
+                        truth_row = truth_df.loc[idx]
+                        if component == 'north':
+                            err = (row['lat'] - truth_row['lat']) * 111000.0
+                        else:
+                            err = (row['lon'] - truth_row['lon']) * 111000.0 * math.cos(math.radians(truth_row['lat']))
+                        sv = row[scatter_var]
+                        if sv is not None and not (isinstance(sv, float) and math.isnan(sv)):
+                            error_vals.append(float(err))
+                            scatter_vals.append(float(sv))
+                    except Exception:
+                        continue
+                if error_vals:
+                    error_arr = np.array(error_vals, dtype=float)
+                    scatter_arr = np.array(scatter_vals, dtype=float)
+                    bin_indices = np.searchsorted(edges_arr, error_arr, side='right') - 1
+                    nbins = len(edges_arr) - 1
+                    bin_sums = np.zeros(nbins, dtype=float)
+                    bin_counts = np.zeros(nbins, dtype=int)
+                    for e_idx, sval in zip(bin_indices, scatter_arr):
+                        if 0 <= e_idx < nbins:
+                            bin_sums[e_idx] += sval
+                            bin_counts[e_idx] += 1
+                    with np.errstate(invalid='ignore'):
+                        bin_means = np.divide(bin_sums, bin_counts, out=np.full_like(bin_sums, np.nan), where=bin_counts>0)
+                    centers = (edges_arr[:-1] + edges_arr[1:]) / 2.0
+                    overlays.append({
+                        'x': centers.tolist(),
+                        'y': bin_means.tolist(),
+                        'style': {'type': 'scatter', 'color': 'red', 'label': f'{scatter_var} avg', 'marker': 'o', 'secondary_y': True, 'secondary_ylabel': scatter_var}
+                    })
+        except Exception:
+            pass
+
     return {
         'histograms': [hist],
         'overlays': overlays,
-        'title': 'East Error Histogram'
+        'title': title
     }
+
+
+@register_hist_formatter('north_error_histogram')
+def north_error_histogram(app_state, widgets: Sequence[Any]) -> Dict[str, Any]:
+    return _build_error_histogram(app_state, widgets, 'north', 'North Error Histogram')
+
+@register_hist_formatter('east_error_histogram')
+def east_error_histogram(app_state, widgets: Sequence[Any]) -> Dict[str, Any]:
+    return _build_error_histogram(app_state, widgets, 'east', 'East Error Histogram')
 
 __all__ = [
     'get_hist_formatter',

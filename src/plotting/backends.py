@@ -680,15 +680,37 @@ class MatplotlibBackend(PlotBackend):
             if style.get('mean_line', True):
                 ax.axvline(mean, color=style.get('mean_color','black'), linestyle=style.get('mean_linestyle','--'), linewidth=1.2, label=style.get('mean_label','Mean'))
         # Overlays
+        # Overlays (support optional secondary y)
+        secondary_ax = None
         for ov in overlays:
             x = ov.get('x'); y = ov.get('y')
             if not x or not y: continue
             st = ov.get('style', {})
+            use_secondary = st.get('secondary_y', False)
+            target_ax = ax
+            if use_secondary:
+                if secondary_ax is None:
+                    secondary_ax = ax.twinx()
+                target_ax = secondary_ax
             ptype = st.get('type','line')
             if ptype == 'scatter':
-                ax.scatter(x,y, label=st.get('label'), c=st.get('color'), marker=st.get('marker','o'), alpha=st.get('alpha',0.8), zorder=3)
+                target_ax.scatter(x,y, label=st.get('label'), c=st.get('color'), marker=st.get('marker','o'), alpha=st.get('alpha',0.8), zorder=3)
             else:
-                ax.plot(x,y, st.get('linestyle','-'), label=st.get('label'), color=st.get('color'), linewidth=st.get('linewidth',2), alpha=st.get('alpha',0.9), zorder=3)
+                target_ax.plot(x,y, st.get('linestyle','-'), label=st.get('label'), color=st.get('color'), linewidth=st.get('linewidth',2), alpha=st.get('alpha',0.9), zorder=3)
+        if secondary_ax:
+            # Label secondary axis if any overlay supplies label text
+            sec_label = None
+            for ov in overlays:
+                st = ov.get('style', {})
+                if st.get('secondary_y') and st.get('secondary_ylabel'):
+                    sec_label = st.get('secondary_ylabel')
+                    break
+            if sec_label:
+                secondary_ax.set_ylabel(sec_label)
+            try:
+                secondary_ax.legend(loc='upper right')
+            except Exception:
+                pass
         # Final styling
         title = config.get('title', data.get('title','Histogram'))
         ax.set_title(title, fontsize=14, fontweight='bold')
@@ -697,7 +719,7 @@ class MatplotlibBackend(PlotBackend):
         ax.set_ylim(0, global_ymax * 1.15 if global_ymax else 1)
         ax.grid(True, axis='y', alpha=0.3)
         try:
-            ax.legend()
+            ax.legend(loc='upper left')
         except Exception:
             pass
         # Primary stats box (from first histogram if present)
