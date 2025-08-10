@@ -60,7 +60,10 @@ class GeospatialTabWidget(BaseGeospatialTabWidget):
                 # Create plot configuration
                 plot_config = {
                     'title': f'Geospatial {self.map_type_var.get().title()} Map',
-                    'show_grid': self.show_grid_var.get()
+                    'show_grid': self.show_grid_var.get(),
+                    # Explicit plot modes for renderer/backends
+                    'tracks_plot_mode': 'trajectory',
+                    'truth_plot_mode': 'scatter',
                 }
                 
                 self.update_plot('lat_lon_scatter', plot_data, plot_config)

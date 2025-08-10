@@ -44,26 +44,24 @@ class XYPlotTabWidget(PlotTabWidget):
             backend: PlotBackend,
             include_data_selection: bool = False,
             include_track_selection: bool = False,
-            config_formatter: Optional[Callable[[Any, List[Any]], Dict[str, Any]]] = None,
-            formatter_widgets: Optional[List[Any]] = None,
+            formatter_name: Optional[str] = None,
             title: str = "XY Plot",
         ):
-        # Flags controlling which selector widgets to include
-        self.include_data_selection = include_data_selection
-        self.include_track_selection = include_track_selection
+            # Flags controlling which selector widgets to include
+            self.include_data_selection = include_data_selection
+            self.include_track_selection = include_track_selection
 
-        # Formatter plumbing
-        self._explicit_formatter = config_formatter
-        self._explicit_formatter_widgets = formatter_widgets or []
+            # Formatter plumbing
+            self._formatter_name = formatter_name
 
-        # Widget references (created later if flags enabled)
-        self.data_selection_widget = None
-        self.track_selection_widget = None
+            # Widget references (created later if flags enabled)
+            self.data_selection_widget = None
+            self.track_selection_widget = None
 
-        super().__init__(parent, backend, title)
+            super().__init__(parent, backend, title)
 
-        # Initial plot attempt
-        self._update_xy_plot()
+            # Initial plot attempt
+            self._update_xy_plot()
 
     def _create_controls(self):
         # Only create selection widget + subclass custom controls.
@@ -118,18 +116,30 @@ class XYPlotTabWidget(PlotTabWidget):
         if not self.controller:
             return {'x': [], 'y': []}
 
-        formatter = self._explicit_formatter or self.get_config_formatter()
+        # The formatters are registered in the xy_config_formatters.py file
+        # The formatter name is passed in to this class's constructor
+        formatter = None
+        if formatter is None and getattr(self, '_formatter_name', None):
+            try:
+                from .xy_config_formatters import get_formatter
+                formatter = get_formatter(self._formatter_name)  # type: ignore[arg-type]
+            except Exception:
+                formatter = None
+        if formatter is None:
+            formatter = self.get_config_formatter()
         if not formatter:
             return {'x': [], 'y': []}
 
+        # This instance's widgets are passed in to the formatter. 
+        # Their values are queried to build the configuration.
         widgets: List[Any] = []
         if self.include_data_selection and self.data_selection_widget:
             widgets.append(self.data_selection_widget)
         if self.include_track_selection and self.track_selection_widget:
             widgets.append(self.track_selection_widget)
-        widgets.extend(self._explicit_formatter_widgets)
         widgets.extend(self.get_formatter_widgets())
 
+        # The formatter also takes the current application state (which contains all the data)
         app_state = self.controller.get_state()
         try:
             built_cfg: Dict[str, Any] = formatter(app_state, widgets) or {}
@@ -138,7 +148,7 @@ class XYPlotTabWidget(PlotTabWidget):
             built_cfg = {'x': [], 'y': []}
 
         # Provide default style while avoiding some static analysis confusion
-        if 'style' not in built_cfg or not isinstance(built_cfg.get('style'), (str,)):  # treat as textual style
+        if 'style' not in built_cfg or not isinstance(built_cfg.get('style'), (str,)):
             built_cfg['style'] = 'line'
 
         built_cfg = self.modify_config(built_cfg)
@@ -161,7 +171,6 @@ class XYPlotTabWidget(PlotTabWidget):
                     'xlabel': config.get('xlabel', 'X'),
                     'ylabel': config.get('ylabel', 'Y'),
                     'style': config.get('style', 'line'),
-                    # Pass through optional styling / axis meta
                     'series_styles': config.get('series_styles'),
                     'y_ticks': config.get('y_ticks'),
                 }

@@ -1,184 +1,45 @@
-"""
-Formatter utilities for XYPlotTabWidget.
+"""XY config formatter functions & registry.
 
-Each formatter must be a callable: (app_state, widgets) -> Dict[str, Any]
-It returns a config dict with keys:
-  - x: list of x values (required)
-  - y: list or dict of y series (required). If dict, keys are series labels.
-  - title/xlabel/ylabel/style: optional
+Uses FormatterSupport helpers to reduce duplication across
+formatters. Each formatter returns a pass-through config for the generic_xy
+pipeline in PlotManager.
 """
 from __future__ import annotations
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Sequence, Protocol, Callable, Optional
 import itertools
+from .formatter_support import FormatterSupport as FS
 
+class Formatter(Protocol):  # structural type for static checking
+    def __call__(self, app_state, widgets: Sequence[Any]) -> Dict[str, Any]: ...  # pragma: no cover
 
-def error_north_east_over_time(app_state, widgets: List[Any]) -> Dict[str, Any]:
-    """Build north/east error time series, replicating ErrorAnalysisTab logic via PlotManager.
+FORMATTER_REGISTRY: Dict[str, Formatter] = {}
 
-    This formatter directly computes errors similar to PlotManager._prepare_north_east_error_data
-    but returns pass-through x/y arrays for the generic_xy pipeline.
-    """
-    focus = app_state.get_focus_dataset_info()
-    if not focus or focus.status.value != "loaded":
-        return {'x': [], 'y': [], 'title': 'Error Analysis'}
+def register_formatter(name: str) -> Callable[[Formatter], Formatter]:
+    def _decorator(func: Formatter) -> Formatter:
+        FORMATTER_REGISTRY[name] = func
+        return func
+    return _decorator
 
-    tracks_df = getattr(focus, 'tracks_df', None)
-    truth_df = getattr(focus, 'truth_df', None)
-    if tracks_df is None or truth_df is None or tracks_df.empty or truth_df.empty:
-        return {'x': [], 'y': [], 'title': 'Error Analysis'}
+def get_formatter(name: str) -> Optional[Formatter]:
+    return FORMATTER_REGISTRY.get(name)
 
-    # Get track selection from any DataSelectionWidget or TrackSelectionWidget in widgets
-    selected_tracks = None
-    for w in widgets:
-        try:
-            if hasattr(w, 'get_selected_tracks'):
-                sel = w.get_selected_tracks()
-                if sel:
-                    selected_tracks = sel
-                    break
-        except Exception:
-            pass
-
-    import numpy as np
-    import pandas as pd
-    # Filter tracks if selection present
-    if selected_tracks is not None:
-        if len(selected_tracks) > 0:
-          if 'track_id' in tracks_df.columns:
-              tracks_df = tracks_df[tracks_df['track_id'].isin(selected_tracks)]
-        else:
-            return {'x': [], 'y': [], 'title': 'Error Analysis'}
-    else:
-        return {'x': [], 'y': [], 'title': 'Error Analysis'}
-
-    if tracks_df.empty:
-        return {'x': [], 'y': [], 'title': 'Error Analysis'}
-
-    north_errors = []
-    east_errors = []
-    times = []
-
-    try:
-        for _, track_row in tracks_df.iterrows():
-            time_diffs = abs(truth_df['timestamp'] - track_row['timestamp'])
-            closest_idx = time_diffs.idxmin()
-            truth_row = truth_df.loc[closest_idx]
-            lat_error = (track_row['lat'] - truth_row['lat']) * 111000
-            lon_error = (track_row['lon'] - truth_row['lon']) * 111000 * np.cos(np.radians(truth_row['lat']))
-            north_errors.append(lat_error)
-            east_errors.append(lon_error)
-            times.append(track_row['timestamp'])
-    except Exception:
-        return {'x': [], 'y': [], 'title': 'Error Analysis'}
-
-    if not times:
-        return {'x': [], 'y': [], 'title': 'Error Analysis'}
-
-    # Convert timestamps to relative seconds from start
-    ts = pd.to_datetime(times)
-    start = ts.min()
-    x_seconds = [(t - start).total_seconds() for t in ts]
-
-    return {
-        'x': x_seconds,
-        'y': {'North Error': north_errors, 'East Error': east_errors},
-        'title': 'North/East Position Errors',
-        'xlabel': 'Time (s)',
-        'ylabel': 'Error (m)',
-        'style': 'line',
-        'series_styles': {
-            'North Error': {'type': 'line', 'color': 'tab:blue', 'marker': 'o', 'linestyle': '-', 'label': 'North Error'},
-            'East Error': {'type': 'line', 'color': 'tab:orange', 'marker': 's', 'linestyle': '--', 'label': 'East Error'}
-        }
-    }
-
-
-# --- Split North / East individual error formatter helpers ---
-def _compute_north_east_errors(app_state, widgets: List[Any]) -> Tuple[List[float], List[float], List[float]]:
-    """Internal helper returning (x_seconds, north_errors, east_errors) or empty lists if unavailable."""
-    focus = app_state.get_focus_dataset_info()
-    if not focus or focus.status.value != "loaded":
-        return [], [], []
-
-    tracks_df = getattr(focus, 'tracks_df', None)
-    truth_df = getattr(focus, 'truth_df', None)
-    if tracks_df is None or truth_df is None or tracks_df.empty or truth_df.empty:
-        return [], [], []
-
-    selected_tracks = None
-    for w in widgets:
-        try:
-            if hasattr(w, 'get_selected_tracks'):
-                sel = w.get_selected_tracks()
-                if sel is not None:
-                    selected_tracks = sel
-                    break
-        except Exception:
-            pass
-
-    if selected_tracks is None:
-        return [], [], []
-    if len(selected_tracks) == 0:
-        return [], [], []
-
-    if 'track_id' in tracks_df.columns:
-        tracks_df = tracks_df[tracks_df['track_id'].isin(selected_tracks)]
-    if tracks_df.empty:
-        return [], [], []
-
-    import numpy as np
-    import pandas as pd
-
-    north_errors: List[float] = []
-    east_errors: List[float] = []
-    times = []
-    try:
-        for _, track_row in tracks_df.iterrows():
-            time_diffs = abs(truth_df['timestamp'] - track_row['timestamp'])
-            closest_idx = time_diffs.idxmin()
-            truth_row = truth_df.loc[closest_idx]
-            lat_error = (track_row['lat'] - truth_row['lat']) * 111000
-            lon_error = (track_row['lon'] - truth_row['lon']) * 111000 * np.cos(np.radians(truth_row['lat']))
-            north_errors.append(lat_error)
-            east_errors.append(lon_error)
-            times.append(track_row['timestamp'])
-    except Exception:
-        return [], [], []
-
-    if not times:
-        return [], [], []
-
-    ts = pd.to_datetime(times)
-    start = ts.min()
-    x_seconds = [(t - start).total_seconds() for t in ts]
-    return x_seconds, north_errors, east_errors
-
-
-def north_error_over_time(app_state, widgets: List[Any]) -> Dict[str, Any]:
+@register_formatter('north_error_over_time')
+def north_error_over_time(app_state, widgets: Sequence[Any]) -> Dict[str, Any]:
     """Formatter for north (latitudinal) positional error vs time, per track (multi-series).
 
     Assumes each selected track has timestamps on a uniform cadence. If lengths differ,
     series are truncated to the shortest length so that a shared X axis can be used.
     """
-    focus = app_state.get_focus_dataset_info()
-    if not focus or focus.status.value != "loaded":
+    focus_dfs = FS.get_focus_or_empty(app_state)
+    if not focus_dfs or focus_dfs.tracks_df is None or focus_dfs.truth_df is None:
         return {'x': [], 'y': [], 'title': 'North Error'}
-    tracks_df = getattr(focus, 'tracks_df', None)
-    truth_df = getattr(focus, 'truth_df', None)
-    if tracks_df is None or truth_df is None or tracks_df.empty or truth_df.empty:
+    tracks_df = focus_dfs.tracks_df
+    truth_df = focus_dfs.truth_df
+    if tracks_df.empty or truth_df.empty:
         return {'x': [], 'y': [], 'title': 'North Error'}
 
     # Track selection
-    selected_tracks = None
-    for w in widgets:
-        try:
-            if hasattr(w, 'get_selected_tracks'):
-                sel = w.get_selected_tracks()
-                if sel is not None:
-                    selected_tracks = sel
-                    break
-        except Exception:
-            pass
+    selected_tracks = FS.extract_selected_tracks(widgets)
     if selected_tracks is None or len(selected_tracks) == 0:
         return {'x': [], 'y': [], 'title': 'North Error'}
     if 'track_id' in tracks_df.columns:
@@ -186,8 +47,7 @@ def north_error_over_time(app_state, widgets: List[Any]) -> Dict[str, Any]:
     if tracks_df.empty:
         return {'x': [], 'y': [], 'title': 'North Error'}
 
-    import numpy as np
-    import pandas as pd
+    import numpy as np, pandas as pd
 
     series_dict: Dict[str, List[float]] = {}
     time_arrays: List[List[Any]] = []
@@ -224,17 +84,7 @@ def north_error_over_time(app_state, widgets: List[Any]) -> Dict[str, Any]:
     x_seconds = [(t - start).total_seconds() for t in base_times]
 
     # Dynamic styles
-    color_cycle = ['tab:blue','tab:orange','tab:green','tab:red','tab:purple','tab:brown','tab:pink','tab:gray','tab:olive','tab:cyan']
-    markers = itertools.cycle(['o','s','^','D','v','>','<','P','X','*'])
-    series_styles: Dict[str, Dict[str, Any]] = {}
-    for idx, key in enumerate(series_dict.keys()):
-        series_styles[key] = {
-            'type': 'line',
-            'color': color_cycle[idx % len(color_cycle)],
-            'marker': next(markers),
-            'linestyle': '-',
-            'label': key,
-        }
+    series_styles = FS.get_series_styles(series_dict.keys(), 'solid')
 
     return {
         'x': x_seconds,
@@ -247,26 +97,18 @@ def north_error_over_time(app_state, widgets: List[Any]) -> Dict[str, Any]:
     }
 
 
-def east_error_over_time(app_state, widgets: List[Any]) -> Dict[str, Any]:
+@register_formatter('east_error_over_time')
+def east_error_over_time(app_state, widgets: Sequence[Any]) -> Dict[str, Any]:
     """Formatter for east (longitudinal) positional error vs time, per track (multi-series)."""
-    focus = app_state.get_focus_dataset_info()
-    if not focus or focus.status.value != "loaded":
+    focus_dfs = FS.get_focus_or_empty(app_state)
+    if not focus_dfs or focus_dfs.tracks_df is None or focus_dfs.truth_df is None:
         return {'x': [], 'y': [], 'title': 'East Error'}
-    tracks_df = getattr(focus, 'tracks_df', None)
-    truth_df = getattr(focus, 'truth_df', None)
-    if tracks_df is None or truth_df is None or tracks_df.empty or truth_df.empty:
+    tracks_df = focus_dfs.tracks_df
+    truth_df = focus_dfs.truth_df
+    if tracks_df.empty or truth_df.empty:
         return {'x': [], 'y': [], 'title': 'East Error'}
 
-    selected_tracks = None
-    for w in widgets:
-        try:
-            if hasattr(w, 'get_selected_tracks'):
-                sel = w.get_selected_tracks()
-                if sel is not None:
-                    selected_tracks = sel
-                    break
-        except Exception:
-            pass
+    selected_tracks = FS.extract_selected_tracks(widgets)
     if selected_tracks is None or len(selected_tracks) == 0:
         return {'x': [], 'y': [], 'title': 'East Error'}
     if 'track_id' in tracks_df.columns:
@@ -274,8 +116,7 @@ def east_error_over_time(app_state, widgets: List[Any]) -> Dict[str, Any]:
     if tracks_df.empty:
         return {'x': [], 'y': [], 'title': 'East Error'}
 
-    import numpy as np
-    import pandas as pd
+    import numpy as np, pandas as pd
 
     series_dict: Dict[str, List[float]] = {}
     time_arrays: List[List[Any]] = []
@@ -307,17 +148,7 @@ def east_error_over_time(app_state, widgets: List[Any]) -> Dict[str, Any]:
     start = base_times.min()
     x_seconds = [(t - start).total_seconds() for t in base_times]
 
-    color_cycle = ['tab:blue','tab:orange','tab:green','tab:red','tab:purple','tab:brown','tab:pink','tab:gray','tab:olive','tab:cyan']
-    markers = itertools.cycle(['o','s','^','D','v','>','<','P','X','*'])
-    series_styles: Dict[str, Dict[str, Any]] = {}
-    for idx, key in enumerate(series_dict.keys()):
-        series_styles[key] = {
-            'type': 'line',
-            'color': color_cycle[idx % len(color_cycle)],
-            'marker': next(markers),
-            'linestyle': '--',
-            'label': key,
-        }
+    series_styles = FS.get_series_styles(series_dict.keys(), 'dashed')
 
     return {
         'x': x_seconds,
@@ -329,70 +160,20 @@ def east_error_over_time(app_state, widgets: List[Any]) -> Dict[str, Any]:
         'series_styles': series_styles,
     }
 
-
-def example_tracks_lat_lon_over_time(app_state, widgets: List[Any]) -> Dict[str, Any]:
-    """Example: build x/y from focus dataset tracks: time vs lat and lon.
-    If a DataSelectionWidget is present in widgets, honor selected tracks.
-    """
-    focus = app_state.get_focus_dataset_info()
-    if not focus or focus.status.value != "loaded" or focus.tracks_df is None or focus.tracks_df.empty:
-        return {'x': [], 'y': []}
-
-    df = focus.tracks_df
-
-    # Try to get selections from DataSelectionWidget if provided
-    selected_tracks = None
-    for w in widgets:
-        try:
-            if hasattr(w, 'get_selected_tracks'):
-                selected_tracks = w.get_selected_tracks()
-                break
-        except Exception:
-            pass
-
-    if selected_tracks and isinstance(selected_tracks, list) and 'All' not in selected_tracks:
-        df = df[df['track_id'].isin(selected_tracks)]
-
-    if df.empty:
-        return {'x': [], 'y': []}
-
-    # Sort by timestamp if present
-    if 'timestamp' in df.columns:
-        df = df.sort_values('timestamp')
-        x_vals = df['timestamp'].tolist()
-    else:
-        x_vals = list(range(len(df)))
-
-    series: Dict[str, Any] = {}
-    if 'lat' in df.columns:
-        series['lat'] = df['lat'].tolist()
-    if 'lon' in df.columns:
-        series['lon'] = df['lon'].tolist()
-
-    return {
-        'x': x_vals,
-        'y': series if series else [],
-        'title': 'Tracks lat/lon over time',
-        'xlabel': 'Time',
-        'ylabel': 'Value',
-        'style': 'line',
-    }
-
-
-def rms_error_3d_over_time(app_state, widgets: List[Any]) -> Dict[str, Any]:
+@register_formatter('rms_error_3d_over_time')
+def rms_error_3d_over_time(app_state, widgets: Sequence[Any]) -> Dict[str, Any]:
     """Compute 3D positional error magnitude vs time per track (multi-series RMS-style plot).
 
     For each trackId we provide a separate error magnitude time series (sqrt(dx^2+dy^2+dz^2)).
     All series share a common X axis truncated to the minimum length across tracks for alignment.
     Honors selected tracks; if multiple, each becomes its own line.
     """
-    focus = app_state.get_focus_dataset_info()
-    if not focus or focus.status.value != "loaded":
+    focus_dfs = FS.get_focus_or_empty(app_state)
+    if not focus_dfs or focus_dfs.tracks_df is None or focus_dfs.truth_df is None:
         return {'x': [], 'y': [], 'title': 'RMS 3D Error'}
-
-    tracks_df = getattr(focus, 'tracks_df', None)
-    truth_df = getattr(focus, 'truth_df', None)
-    if tracks_df is None or truth_df is None or tracks_df.empty or truth_df.empty:
+    tracks_df = focus_dfs.tracks_df
+    truth_df = focus_dfs.truth_df
+    if tracks_df.empty or truth_df.empty:
         return {'x': [], 'y': [], 'title': 'RMS 3D Error'}
 
     # Track selection
@@ -463,17 +244,7 @@ def rms_error_3d_over_time(app_state, widgets: List[Any]) -> Dict[str, Any]:
     x_seconds = [(t - start).total_seconds() for t in ts]
 
     import itertools
-    color_cycle = ['tab:blue','tab:orange','tab:green','tab:red','tab:purple','tab:brown','tab:pink','tab:gray','tab:olive','tab:cyan']
-    markers = itertools.cycle(['o','s','^','D','v','>','<','P','X','*'])
-    series_styles: Dict[str, Dict[str, Any]] = {}
-    for idx, key in enumerate(series_dict.keys()):
-        series_styles[key] = {
-            'type': 'line',
-            'color': color_cycle[idx % len(color_cycle)],
-            'marker': next(markers),
-            'linestyle': '-',
-            'label': key,
-        }
+    series_styles = FS.get_series_styles(series_dict.keys(), 'solid')
 
     return {
         'x': x_seconds,
@@ -491,7 +262,8 @@ Produces an XY config where each selected (or all) track IDs becomes a horizonta
 at Y = track_index (or track_id label) spanning from first to last timestamp.
 """
 
-def track_existence_over_time(app_state, widgets: List[Any]) -> Dict[str, Any]:
+@register_formatter('track_existence_over_time')
+def track_existence_over_time(app_state, widgets: Sequence[Any]) -> Dict[str, Any]:
     focus = app_state.get_focus_dataset_info()
     if not focus or focus.status.value != "loaded":
         return {"x": [], "y": [], "title": "Track Lifetimes"}

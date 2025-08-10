@@ -180,6 +180,9 @@ class BaseGeospatialTabWidget(PlotTabWidget):
         config: Dict[str, Any] = {
             'tracks': self.track_selection_var,
             'truth': self.truth_selection_var,
+            # Plot mode directives for downstream rendering logic
+            'tracks_plot_mode': 'trajectory',
+            'truth_plot_mode': 'scatter',
         }
         
         # Get coordinate ranges from widget

@@ -18,13 +18,8 @@ from ..plotting.overview_tab import OverviewTabWidget
 from ..plotting.geospatial_tab import GeospatialTabWidget
 from ..plotting.animation_tab import AnimationTabWidget
 from ..plotting.xy_plot_tab import XYPlotTabWidget
-from ..plotting.xy_config_formatters import (
-    example_tracks_lat_lon_over_time,
-    north_error_over_time,
-    east_error_over_time,
-    rms_error_3d_over_time,
-    track_existence_over_time,
-)
+# Importing formatter names via registry lookup (functions kept for backward compatibility if needed)
+from ..plotting import xy_config_formatters  # noqa: F401  (ensures registry side-effects)
 
 
 class RightPanel:
@@ -100,18 +95,15 @@ class RightPanel:
             self._create_overview_tab()
             # Statistics Tab
             self._create_statistics_tab()
+            # Track existence (lifetime) tab 
+            self._create_xy_lifetime_tab()
             # Lat/Lon Scatter Tab
             self._create_geospatial_tab()
-            # (Removed) Legacy bespoke North/East Errors and RMS Error tabs replaced by generic XY equivalents
             # Generic XY RMS Error mirror tab
-            self._create_xy_rms_error_tab(include_track_selection=True)
-            # Track existence (lifetime) tab now generic XY
-            self._create_xy_lifetime_tab()
+            self._create_xy_rms_error_tab()
             # Animation Tab
             self._create_animation_tab()
-            # Generic XY Tab (with optional data selection widgets enabled)
-            self._create_xy_plot_tab(include_data_selection=True)
-            # Separate North / East error tabs (split from prior combined tab)
+            # North / East error tabs
             self._create_xy_north_error_tab()
             self._create_xy_east_error_tab()
     
@@ -184,8 +176,7 @@ class RightPanel:
             xy_backend,
             include_data_selection=False,
             include_track_selection=True,
-            config_formatter=track_existence_over_time,
-            formatter_widgets=[],
+            formatter_name="track_existence_over_time",
             title="Track Lifetimes"
         )
         self.notebook.add(self.xy_lifetime_tab, text="Track Lifetimes")
@@ -219,28 +210,6 @@ class RightPanel:
             self.tab_widgets = {}
         self.tab_widgets['animation'] = self.animation_tab
 
-    def _create_xy_plot_tab(self, include_data_selection: bool = True):
-        """Create the generic XY plot tab."""
-        xy_backend = MatplotlibBackend()
-        # Pass a default/example formatter; callers can later replace it via controller interaction if desired
-        self.xy_tab = XYPlotTabWidget(
-            self.notebook,
-            xy_backend,
-            include_data_selection=include_data_selection,
-            config_formatter=example_tracks_lat_lon_over_time,
-            formatter_widgets=[],
-        )
-        self.notebook.add(self.xy_tab, text="XY Plot")
-
-        if hasattr(self, 'controller'):
-            self.xy_tab.set_controller(self.controller)
-        if hasattr(self, 'plot_manager'):
-            self.xy_tab.set_plot_manager(self.plot_manager)
-
-        if not hasattr(self, 'tab_widgets'):
-            self.tab_widgets = {}
-        self.tab_widgets['xy_plot'] = self.xy_tab
-
     def _create_xy_north_error_tab(self):
         """Create a generic XY tab for North (latitudinal) error vs time."""
         xy_backend = MatplotlibBackend()
@@ -249,8 +218,7 @@ class RightPanel:
             xy_backend,
             include_data_selection=False,
             include_track_selection=True,
-            config_formatter=north_error_over_time,
-            formatter_widgets=[],
+            formatter_name="north_error_over_time",
             title="North Error"
         )
         self.notebook.add(self.xy_north_error_tab, text="North Error")
@@ -272,8 +240,7 @@ class RightPanel:
             xy_backend,
             include_data_selection=False,
             include_track_selection=True,
-            config_formatter=east_error_over_time,
-            formatter_widgets=[],
+            formatter_name="east_error_over_time",
             title="East Error"
         )
         self.notebook.add(self.xy_east_error_tab, text="East Error")
@@ -287,16 +254,15 @@ class RightPanel:
             self.tab_widgets = {}
         self.tab_widgets['xy_east_error'] = self.xy_east_error_tab
 
-    def _create_xy_rms_error_tab(self, include_track_selection: bool = True):
+    def _create_xy_rms_error_tab(self):
         """Create a generic XY tab instance replicating the RMS Error plot (time vs 3D RMS)."""
         xy_backend = MatplotlibBackend()
         self.xy_rms_error_tab = XYPlotTabWidget(
             self.notebook,
             xy_backend,
             include_data_selection=False,
-            include_track_selection=include_track_selection,
-            config_formatter=rms_error_3d_over_time,
-            formatter_widgets=[],
+            include_track_selection=True,
+            formatter_name="rms_error_3d_over_time",
             title="XY RMS Error"
         )
         self.notebook.add(self.xy_rms_error_tab, text="XY RMS Error")

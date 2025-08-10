@@ -289,7 +289,9 @@ class AnimationTabWidget(BaseGeospatialTabWidget):
                 
                 # Create initial frame
                 config = {
-                    'title': plot_data.get('title', 'Animation')
+                    'title': plot_data.get('title', 'Animation'),
+                    'tracks_plot_mode': 'trajectory',
+                    'truth_plot_mode': 'scatter',
                 }
                 
                 self.update_plot('lat_lon_animation', plot_data, config)
@@ -334,7 +336,9 @@ class AnimationTabWidget(BaseGeospatialTabWidget):
                     'title': f'Animation Frame {self.current_frame + 1}/{self.total_frames}',
                     'frame': self.current_frame,
                     'current_frame': self.current_frame,
-                    'total_frames': self.total_frames 
+                    'total_frames': self.total_frames,
+                    'tracks_plot_mode': 'trajectory',
+                    'truth_plot_mode': 'scatter',
                 }
                 
                 self.update_plot('animation_frame', filtered_data, config)

@@ -390,16 +390,6 @@ class MatplotlibBackend(PlotBackend):
     def _plot_geospatial_data(self, ax, data: Dict[str, Any], config: Dict[str, Any]):
         """Plot geospatial data in either scatter or trajectory mode."""
         
-        # Determine plot mode from config or data structure
-        plot_mode = config.get('plot_mode', 'auto')
-        
-        # Auto-detect mode if not specified
-        if plot_mode == 'auto':
-            if 'animation_data' in data:
-                plot_mode = 'trajectory'
-            else:
-                plot_mode = 'scatter'
-        
         # Extract data based on structure
         tracks_df = data.get('tracks_df', None)
         truth_df = data.get('truth_df', None)
@@ -412,11 +402,29 @@ class MatplotlibBackend(PlotBackend):
                 transform=ax.transAxes, fontsize=12, color='gray')
             return
         
-        # Plot tracks
+        # Plot tracks    
+        # Determine plot mode from config or data structure
+        plot_mode = config.get('tracks_plot_mode', 'auto')
+        
+        # Auto-detect mode if not specified
+        if plot_mode == 'auto':
+            if 'animation_data' in data:
+                plot_mode = 'trajectory'
+            else:
+                plot_mode = 'scatter'
         if tracks_df is not None and not tracks_df.empty:
             self._plot_tracks_data(ax, tracks_df, plot_mode, config)
         
         # Plot truth
+        # Determine plot mode from config or data structure
+        plot_mode = config.get('truth_plot_mode', 'auto')
+        
+        # Auto-detect mode if not specified
+        if plot_mode == 'auto':
+            if 'animation_data' in data:
+                plot_mode = 'trajectory'
+            else:
+                plot_mode = 'scatter'
         if truth_df is not None and not truth_df.empty:
             self._plot_truth_data(ax, truth_df, plot_mode, config)
         
