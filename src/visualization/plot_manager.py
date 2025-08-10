@@ -45,24 +45,6 @@ class PlotManager:
                 'requires_focus': True,
                 'requires_multiple': False
             },
-            'north_east_error': {
-                'name': 'North/East Error',
-                'description': 'North and East position errors for tracks',
-                'requires_focus': True,
-                'requires_multiple': False
-            },
-            'rms_error_3d': {
-                'name': '3D RMS Error',
-                'description': '3D visualization of RMS position errors',
-                'requires_focus': True,
-                'requires_multiple': False
-            },
-            'track_truth_lifetime': {
-                'name': 'Track/Truth Lifetime',
-                'description': 'Lifetime duration plots for tracks and truth',
-                'requires_focus': True,
-                'requires_multiple': False
-            },
             'lat_lon_animation': {
                 'name': 'Lat/Lon Animation',
                 'description': 'Animated latitude/longitude plot with time progression',
@@ -160,12 +142,6 @@ class PlotManager:
                 return self._prepare_track_counts_data(app_state, plot_config)
             elif plot_id == 'lat_lon_scatter':
                 return self._prepare_lat_lon_data(app_state, plot_config)
-            elif plot_id == 'north_east_error':
-                return self._prepare_north_east_error_data(app_state, plot_config)
-            elif plot_id == 'rms_error_3d':
-                return self._prepare_rms_error_3d_data(app_state, plot_config)
-            elif plot_id == 'track_truth_lifetime':
-                return self._prepare_lifetime_data(app_state, plot_config)
             elif plot_id == 'lat_lon_animation':
                 return self._prepare_animation_data(app_state, plot_config)
             elif plot_id == 'demo_plot':
@@ -239,6 +215,19 @@ class PlotManager:
                 # Include all tracks
                 filtered_tracks = tracks_df
             elif isinstance(tracks_selection, list) and len(tracks_selection) > 0:
+                # Normalize selection types to match dataframe dtype (handles str/int mismatch)
+                try:
+                    col_dtype = tracks_df['track_id'].dtype
+                    if col_dtype.kind in 'iu' and any(isinstance(x, str) for x in tracks_selection):
+                        norm_selection = []
+                        for x in tracks_selection:
+                            try:
+                                norm_selection.append(int(x))
+                            except Exception:
+                                pass
+                        tracks_selection = norm_selection if norm_selection else tracks_selection
+                except Exception:
+                    pass
                 # Include specific track_ids
                 filtered_tracks = tracks_df[tracks_df['track_id'].isin(tracks_selection)]
             else:
@@ -263,6 +252,19 @@ class PlotManager:
                 # Include all truth
                 filtered_truth = truth_df
             elif isinstance(truth_selection, list) and len(truth_selection) > 0:
+                # Normalize selection types (str/int)
+                try:
+                    col_dtype = truth_df['id'].dtype
+                    if col_dtype.kind in 'iu' and any(isinstance(x, str) for x in truth_selection):
+                        norm_truth = []
+                        for x in truth_selection:
+                            try:
+                                norm_truth.append(int(x))
+                            except Exception:
+                                pass
+                        truth_selection = norm_truth if norm_truth else truth_selection
+                except Exception:
+                    pass
                 # Include specific truth ids
                 filtered_truth = truth_df[truth_df['id'].isin(truth_selection)]
             else:
@@ -539,146 +541,6 @@ class PlotManager:
                 }
         
         return {'valid': True}
-    
-    def _prepare_north_east_error_data(self, app_state: ApplicationState, 
-                                      config: Dict[str, Any]) -> Dict[str, Any]:
-        """Prepare data for North/East error plot."""
-        import numpy as np
-        
-        focus_dataset = app_state.get_focus_dataset_info()
-        if not focus_dataset or focus_dataset.status.value != "loaded":
-            return {'error': 'No loaded focus dataset available'}
-        
-        if (focus_dataset.tracks_df is None or focus_dataset.tracks_df.empty or
-            focus_dataset.truth_df is None or focus_dataset.truth_df.empty):
-            return {'error': 'Missing tracks or truth data for error calculation'}
-        
-        # Simple error calculation - match by timestamp (simplified)
-        error_data = {'north_errors': [], 'east_errors': [], 'timestamps': []}
-
-        tracks_df = focus_dataset.tracks_df
-        truth_df = focus_dataset.truth_df
-        tracks_selection = config.get('tracks', "All")
-        if tracks_selection != "All" and tracks_selection != "None":
-            if isinstance(tracks_selection, list) and len(tracks_selection) > 0:
-                # Filter to selected tracks only
-                tracks_df = tracks_df[tracks_df['track_id'].isin(tracks_selection)]
-                
-        if tracks_df.empty or tracks_selection == "None":
-            return {'error': 'No tracks selected or available for RMS error calculation'}
-        
-        for _, track_row in tracks_df.iterrows():
-            # Find closest truth point by timestamp
-            time_diffs = abs(truth_df['timestamp'] - track_row['timestamp'])
-            closest_idx = time_diffs.idxmin()
-            truth_row = truth_df.loc[closest_idx]
-            
-            # Calculate approximate North/East errors (simplified lat/lon diff)
-            lat_error = (track_row['lat'] - truth_row['lat']) * 111000  # approx meters per degree
-            lon_error = (track_row['lon'] - truth_row['lon']) * 111000 * np.cos(np.radians(truth_row['lat']))
-            
-            error_data['north_errors'].append(lat_error)
-            error_data['east_errors'].append(lon_error)
-            error_data['timestamps'].append(track_row['timestamp'])
-        
-        return {
-            'error_data': error_data,
-            'title': f'North/East Error - {focus_dataset.name}',
-            'plot_type': 'error'
-        }
-    
-    def _prepare_rms_error_3d_data(self, app_state: ApplicationState, 
-                                  config: Dict[str, Any]) -> Dict[str, Any]:
-        """Prepare data for 3D RMS error plot."""
-        import numpy as np
-        
-        focus_dataset = app_state.get_focus_dataset_info()
-        if not focus_dataset or focus_dataset.status.value != "loaded":
-            return {'error': 'No loaded focus dataset available'}
-        
-        if (focus_dataset.tracks_df is None or focus_dataset.tracks_df.empty or
-            focus_dataset.truth_df is None or focus_dataset.truth_df.empty):
-            return {'error': 'Missing tracks or truth data for error calculation'}
-        
-        tracks_df = focus_dataset.tracks_df
-        truth_df = focus_dataset.truth_df
-        
-        # Calculate 3D RMS errors
-        rms_data = {'x_pos': [], 'y_pos': [], 'rms_error_3d': [], 'timestamps': []}
-
-        tracks_selection = config.get('tracks', "All")
-        if tracks_selection != "All" and tracks_selection != "None":
-            if isinstance(tracks_selection, list) and len(tracks_selection) > 0:
-                # Filter to selected tracks only
-                tracks_df = tracks_df[tracks_df['track_id'].isin(tracks_selection)]
-                
-        if tracks_df.empty or tracks_selection == "None":
-            return {'error': 'No tracks selected or available for RMS error calculation'}
-    
-        for _, track_row in tracks_df.iterrows():
-            # Find closest truth point
-            time_diffs = abs(truth_df['timestamp'] - track_row['timestamp'])
-            closest_idx = time_diffs.idxmin()
-            truth_row = truth_df.loc[closest_idx]
-            
-            # Calculate 3D position error
-            lat_error = (track_row['lat'] - truth_row['lat']) * 111000
-            lon_error = (track_row['lon'] - truth_row['lon']) * 111000 * np.cos(np.radians(truth_row['lat']))
-            alt_error = track_row['alt'] - truth_row['alt']
-            
-            rms_error_3d = np.sqrt(lat_error**2 + lon_error**2 + alt_error**2)
-            
-            rms_data['x_pos'].append(track_row['lat'])
-            rms_data['y_pos'].append(track_row['lon'])
-            rms_data['rms_error_3d'].append(rms_error_3d)
-            rms_data['timestamps'].append(track_row['timestamp'])
-        
-        return {
-            'rms_data': rms_data,
-            'title': f'3D RMS Error - {focus_dataset.name}',
-            'plot_type': 'rms_3d'
-        }
-    
-    def _prepare_lifetime_data(self, app_state: ApplicationState, 
-                              config: Dict[str, Any]) -> Dict[str, Any]:
-        """Prepare data for track/truth lifetime plot."""
-        focus_dataset = app_state.get_focus_dataset_info()
-        if not focus_dataset or focus_dataset.status.value != "loaded":
-            return {'error': 'No loaded focus dataset available'}
-        
-        lifetime_data = {'track_lifetimes': [], 'truth_lifetimes': []}
-        
-        # Calculate track lifetimes
-        if (config.get('include_tracks', True) and 
-            focus_dataset.tracks_df is not None and not focus_dataset.tracks_df.empty):
-            tracks_df = focus_dataset.tracks_df
-            
-            for track_id in tracks_df['track_id'].unique():
-                track_data = tracks_df[tracks_df['track_id'] == track_id]
-                if len(track_data) > 1:
-                    start_time = track_data['timestamp'].min()
-                    end_time = track_data['timestamp'].max()
-                    lifetime = (end_time - start_time).total_seconds()
-                    lifetime_data['track_lifetimes'].append(lifetime)
-        
-        # Calculate truth lifetimes
-        if (config.get('include_truth', False) and 
-            focus_dataset.truth_df is not None and not focus_dataset.truth_df.empty):
-            truth_df = focus_dataset.truth_df
-            
-            for truth_id in truth_df['id'].unique():
-                truth_data = truth_df[truth_df['id'] == truth_id]
-                if len(truth_data) > 1:
-                    start_time = truth_data['timestamp'].min()
-                    end_time = truth_data['timestamp'].max()
-                    lifetime = (end_time - start_time).total_seconds()
-                    lifetime_data['truth_lifetimes'].append(lifetime)
-        
-        return {
-            'lifetime_data': lifetime_data,
-            'title': f'Track/Truth Lifetime - {focus_dataset.name}',
-            'plot_type': 'lifetime'
-        }
     
     def get_plot_info(self, plot_id: str) -> Optional[Dict[str, Any]]:
         """Get information about a specific plot type."""

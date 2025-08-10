@@ -261,15 +261,6 @@ class MatplotlibBackend(PlotBackend):
             if plot_type == 'track_counts':
                 self._plot_track_counts(ax, data, config)
             
-            elif plot_type == 'north_east_error':
-                self._plot_north_east_error(ax, data, config)
-            
-            elif plot_type == 'rms_error_3d':
-                self._plot_rms_error_3d(ax, data, config)
-            
-            elif plot_type == 'track_truth_lifetime':
-                self._plot_lifetime(ax, data, config)
-                
             elif plot_type == 'lat_lon_scatter':
                 config['plot_mode'] = 'scatter'
                 self._plot_geospatial_data(ax, data, config)
@@ -310,104 +301,6 @@ class MatplotlibBackend(PlotBackend):
             self._show_error_plot(str(e))
             return PlotResult(success=False, error=str(e))
     
-    def _plot_north_east_error(self, ax, data: Dict[str, Any], config: Dict[str, Any]):
-        """Plot North/East error data."""
-        error_data = data['error_data']
-        
-        if not error_data['north_errors'] or not error_data['east_errors']:
-            ax.text(0.5, 0.5, 'No error data available',
-                   horizontalalignment='center', verticalalignment='center',
-                   transform=ax.transAxes, fontsize=12, color='gray')
-            return
-        
-        # Create time array for x-axis
-        timestamps = error_data['timestamps']
-        time_seconds = [(t - timestamps[0]).total_seconds() for t in timestamps]
-        
-        # Plot North and East errors
-        ax.plot(time_seconds, error_data['north_errors'], 'b-', label='North Error', linewidth=2)
-        ax.plot(time_seconds, error_data['east_errors'], 'r-', label='East Error', linewidth=2)
-        
-        # Styling
-        ax.set_title('North/East Position Errors', fontsize=14, fontweight='bold')
-        ax.set_xlabel('Time (seconds)', fontsize=12)
-        ax.set_ylabel('Error (meters)', fontsize=12)
-        ax.grid(True, alpha=0.3)
-        ax.legend()
-        ax.axhline(y=0, color='k', linestyle='--', alpha=0.5)
-    
-    def _plot_rms_error_3d(self, ax, data: Dict[str, Any], config: Dict[str, Any]):
-        """Plot 3D RMS error data with time on X-axis and error on Y-axis."""
-        rms_data = data['rms_data']
-        
-        if not rms_data['rms_error_3d']:
-            ax.text(0.5, 0.5, 'No RMS error data available',
-                   horizontalalignment='center', verticalalignment='center',
-                   transform=ax.transAxes, fontsize=12, color='gray')
-            return
-        
-        # Convert timestamps to relative time (seconds from start)
-        import numpy as np
-        import pandas as pd
-        
-        timestamps = pd.to_datetime(rms_data['timestamps'])
-        start_time = timestamps.min()
-        relative_times = [(t - start_time).total_seconds() for t in timestamps]
-        
-        # Create line plot with time on X-axis and RMS error on Y-axis
-        ax.plot(relative_times, rms_data['rms_error_3d'], 
-                'o-', color='blue', linewidth=2, markersize=4, alpha=0.7)
-        
-        # Add trend line if there are enough points
-        if len(relative_times) > 1:
-            z = np.polyfit(relative_times, rms_data['rms_error_3d'], 1)
-            p = np.poly1d(z)
-            ax.plot(relative_times, p(relative_times), 
-                   '--', color='red', alpha=0.8, linewidth=1, label='Trend')
-            ax.legend()
-        
-        # Styling
-        ax.set_title('3D RMS Position Error vs Time', fontsize=14, fontweight='bold')
-        ax.set_xlabel('Time (seconds)', fontsize=12)
-        ax.set_ylabel('RMS Error (meters)', fontsize=12)
-        ax.grid(True, alpha=0.3)
-        
-        # Format y-axis to show error values nicely
-        from matplotlib.ticker import FuncFormatter
-        ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x:.2f}'))
-
-    def _plot_lifetime(self, ax, data: Dict[str, Any], config: Dict[str, Any]):
-        """Plot track/truth lifetime data."""
-        lifetime_data = data['lifetime_data']
-        
-        if not lifetime_data['track_lifetimes'] and not lifetime_data['truth_lifetimes']:
-            ax.text(0.5, 0.5, 'No lifetime data available',
-                   horizontalalignment='center', verticalalignment='center',
-                   transform=ax.transAxes, fontsize=12, color='gray')
-            return
-        
-        # Prepare data for histogram
-        data_to_plot = []
-        labels = []
-        
-        if lifetime_data['track_lifetimes']:
-            data_to_plot.append(lifetime_data['track_lifetimes'])
-            labels.append('Tracks')
-        
-        if lifetime_data['truth_lifetimes']:
-            data_to_plot.append(lifetime_data['truth_lifetimes'])
-            labels.append('Truth')
-        
-        # Create histogram
-        ax.hist(data_to_plot, bins=20, alpha=0.7, label=labels, edgecolor='black')
-        
-        # Styling
-        ax.set_title('Track/Truth Lifetime Distribution', fontsize=14, fontweight='bold')
-        ax.set_xlabel('Lifetime (seconds)', fontsize=12)
-        ax.set_ylabel('Count', fontsize=12)
-        ax.grid(True, alpha=0.3)
-        if len(labels) > 1:
-            ax.legend()
             
     def _plot_tracks_data(self, ax, tracks_df: pd.DataFrame, plot_mode: str, config: Dict[str, Any]):
         """Plot tracks data in specified mode."""

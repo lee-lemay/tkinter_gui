@@ -277,6 +277,15 @@ class DataSelectionWidget(CollapsibleWidget):
                     track_id = item.replace("Track ", "")
                     selected_tracks.append(track_id)
         
+        # Coerce selected track IDs back to original dtype (avoid str/int mismatch)
+        if selected_tracks and self.track_ids:
+            ref_type = type(self.track_ids[0])
+            try:
+                if ref_type is not str:
+                    selected_tracks = [ref_type(t) if isinstance(t, str) else t for t in selected_tracks]
+            except Exception:
+                pass
+
         if self.tracks_callback:
             self.tracks_callback(selected_tracks)
     
@@ -312,6 +321,15 @@ class DataSelectionWidget(CollapsibleWidget):
                     truth_id = item.replace("Truth ", "")
                     selected_truth.append(truth_id)
         
+        # Coerce selected truth IDs back to original dtype
+        if selected_truth and self.truth_ids:
+            ref_type = type(self.truth_ids[0])
+            try:
+                if ref_type is not str:
+                    selected_truth = [ref_type(t) if isinstance(t, str) else t for t in selected_truth]
+            except Exception:
+                pass
+
         if self.truth_callback:
             self.truth_callback(selected_truth)
     
@@ -399,6 +417,14 @@ class DataSelectionWidget(CollapsibleWidget):
                 if item.startswith("Track ") and not item.startswith("─"):
                     track_id = item.replace("Track ", "")
                     selected_tracks.append(track_id)
+            # Coerce to original dtype
+            if selected_tracks and self.track_ids:
+                ref_type = type(self.track_ids[0])
+                try:
+                    if ref_type is not str:
+                        selected_tracks = [ref_type(t) if isinstance(t, str) else t for t in selected_tracks]
+                except Exception:
+                    pass
             return selected_tracks
     
     def get_selected_truth(self) -> List[str]:
@@ -424,6 +450,14 @@ class DataSelectionWidget(CollapsibleWidget):
                 if item.startswith("Truth ") and not item.startswith("─"):
                     truth_id = item.replace("Truth ", "")
                     selected_truth.append(truth_id)
+            # Coerce to original dtype
+            if selected_truth and self.truth_ids:
+                ref_type = type(self.truth_ids[0])
+                try:
+                    if ref_type is not str:
+                        selected_truth = [ref_type(t) if isinstance(t, str) else t for t in selected_truth]
+                except Exception:
+                    pass
             return selected_truth
     
     def get_tracks_selection(self) -> List[str]:
