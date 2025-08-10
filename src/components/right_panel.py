@@ -18,6 +18,8 @@ from ..plotting.overview_tab import OverviewTabWidget
 from ..plotting.geospatial_tab import GeospatialTabWidget
 from ..plotting.animation_tab import AnimationTabWidget
 from ..plotting.xy_plot_tab import XYPlotTabWidget
+from ..plotting.histogram_plot_tab import HistogramPlotTabWidget
+from ..plotting import histogram_config_formatters  # noqa: F401 ensure registry
 # Importing formatter names via registry lookup (functions kept for backward compatibility if needed)
 from ..plotting import xy_config_formatters  # noqa: F401  (ensures registry side-effects)
 
@@ -106,6 +108,8 @@ class RightPanel:
             # North / East error tabs
             self._create_xy_north_error_tab()
             self._create_xy_east_error_tab()
+            # Histograms
+            self._create_histogram_tabs()
     
     def _create_overview_tab(self):
         """Create the overview tab using modular widget architecture."""
@@ -275,6 +279,42 @@ class RightPanel:
         if not hasattr(self, 'tab_widgets'):
             self.tab_widgets = {}
         self.tab_widgets['xy_rms_error'] = self.xy_rms_error_tab
+
+    def _create_histogram_tabs(self):
+        """Create histogram tabs for north and east error distributions."""
+        north_backend = MatplotlibBackend()
+        self.north_error_hist_tab = HistogramPlotTabWidget(
+            self.notebook,
+            north_backend,
+            include_data_selection=False,
+            include_track_selection=True,
+            formatter_name='north_error_histogram',
+            title='North Error Histogram'
+        )
+        self.notebook.add(self.north_error_hist_tab, text='North Err Hist')
+
+        east_backend = MatplotlibBackend()
+        self.east_error_hist_tab = HistogramPlotTabWidget(
+            self.notebook,
+            east_backend,
+            include_data_selection=False,
+            include_track_selection=True,
+            formatter_name='east_error_histogram',
+            title='East Error Histogram'
+        )
+        self.notebook.add(self.east_error_hist_tab, text='East Err Hist')
+
+        if hasattr(self, 'controller') and self.controller:
+            self.north_error_hist_tab.set_controller(self.controller)
+            self.east_error_hist_tab.set_controller(self.controller)
+        if hasattr(self, 'plot_manager') and self.plot_manager:
+            self.north_error_hist_tab.set_plot_manager(self.plot_manager)
+            self.east_error_hist_tab.set_plot_manager(self.plot_manager)
+
+        if not hasattr(self, 'tab_widgets'):
+            self.tab_widgets = {}
+        self.tab_widgets['north_error_hist'] = self.north_error_hist_tab
+        self.tab_widgets['east_error_hist'] = self.east_error_hist_tab
     
     def _on_tab_changed(self, event):
         """Handle tab change events."""

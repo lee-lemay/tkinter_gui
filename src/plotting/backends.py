@@ -275,6 +275,8 @@ class MatplotlibBackend(PlotBackend):
             
             elif plot_type == 'generic_xy':
                 self._plot_generic_xy(ax, data, config)
+            elif plot_type == 'histogram':
+                self._plot_histogram(ax, data, config)
             else:
                 raise ValueError(f"Unsupported plot type: {plot_type}")
             
@@ -625,3 +627,83 @@ class MatplotlibBackend(PlotBackend):
                     ax.set_ylim(ymin, ymax)
             except Exception as e:
                 self.logger.debug(f"Custom y ticks failed: {e}")
+
+    def _plot_histogram(self, ax, data: Dict[str, Any], config: Dict[str, Any]):
+        import numpy as np
+        histograms = data.get('histograms') or []
+        overlays = data.get('overlays') or []
+        if not histograms:
+            ax.text(0.5, 0.5, 'No histogram data', ha='center', va='center', transform=ax.transAxes, color='gray')
+            return
+        global_ymax = 0
+        # Draw each histogram in order
+        for h in histograms:
+            values = np.array(h.get('values') or [], dtype=float)
+            if values.size == 0:
+                continue
+            mean = h.get('mean') or 0.0
+            std = h.get('std') or 1.0
+            if std == 0: std = 1.0
+            edges = h.get('edges')
+            if not edges:
+                edges = [mean + k*std for k in (-3,-2,-1,0,1,2,3)]
+            counts, _ = np.histogram(values, bins=edges)
+            style = h.get('style', {})
+            # Sigma bands unless disabled
+            if style.get('sigma_bands', True):
+                bands = h.get('bands')
+                if not bands:
+                    # Default: fixed 1σ-wide bands around mean, independent of bin edges
+                    # Use up to ±3σ (classic). Colors mirror previous scheme.
+                    bands = [
+                        (mean-3*std, mean-2*std, (1.0,0.6,0.6,0.5)),
+                        (mean-2*std, mean-1*std, (0.6,0.8,1.0,0.5)),
+                        (mean-1*std, mean,         (0.7,1.0,0.7,0.5)),
+                        (mean,        mean+1*std, (0.7,1.0,0.7,0.5)),
+                        (mean+1*std, mean+2*std, (0.6,0.8,1.0,0.5)),
+                        (mean+2*std, mean+3*std, (1.0,0.6,0.6,0.5)),
+                    ]
+                for left, right, color in bands:
+                    if left < right:
+                        ax.axvspan(left, right, facecolor=color, edgecolor='none', zorder=0)
+            # Outline bars or filled
+            outline_only = style.get('outline_only', True)
+            bar_color = style.get('color', 'black')
+            lw = style.get('linewidth', 1.5)
+            for i in range(len(counts)):
+                left = edges[i]; right = edges[i+1]; height = counts[i]
+                global_ymax = max(global_ymax, height)
+                if outline_only:
+                    ax.plot([left,left,right,right,left],[0,height,height,0,0], color=bar_color, linewidth=lw, zorder=2)
+                else:
+                    ax.bar([ (left+right)/2.0 ], [height], width=(right-left)*0.95, color=bar_color, alpha=style.get('alpha',0.6), zorder=2, edgecolor='black')
+            if style.get('mean_line', True):
+                ax.axvline(mean, color=style.get('mean_color','black'), linestyle=style.get('mean_linestyle','--'), linewidth=1.2, label=style.get('mean_label','Mean'))
+        # Overlays
+        for ov in overlays:
+            x = ov.get('x'); y = ov.get('y')
+            if not x or not y: continue
+            st = ov.get('style', {})
+            ptype = st.get('type','line')
+            if ptype == 'scatter':
+                ax.scatter(x,y, label=st.get('label'), c=st.get('color'), marker=st.get('marker','o'), alpha=st.get('alpha',0.8), zorder=3)
+            else:
+                ax.plot(x,y, st.get('linestyle','-'), label=st.get('label'), color=st.get('color'), linewidth=st.get('linewidth',2), alpha=st.get('alpha',0.9), zorder=3)
+        # Final styling
+        title = config.get('title', data.get('title','Histogram'))
+        ax.set_title(title, fontsize=14, fontweight='bold')
+        ax.set_xlabel(config.get('xlabel', data.get('metric','value')))
+        ax.set_ylabel('Count')
+        ax.set_ylim(0, global_ymax * 1.15 if global_ymax else 1)
+        ax.grid(True, axis='y', alpha=0.3)
+        try:
+            ax.legend()
+        except Exception:
+            pass
+        # Primary stats box (from first histogram if present)
+        first = histograms[0]
+        try:
+            ax.text(0.02, 0.95, f"μ={first.get('mean',0):.2f}\nσ={first.get('std',1):.2f}", transform=ax.transAxes, va='top', ha='left', fontsize=10,
+                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.7, edgecolor='gray'))
+        except Exception:
+            pass

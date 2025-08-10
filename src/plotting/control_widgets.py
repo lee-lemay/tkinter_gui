@@ -1111,3 +1111,120 @@ class PlaybackControlWidget(CollapsibleWidget):
     def set_playing(self, playing: bool):
         """Set playing state."""
         self.playing.set(playing)
+
+
+class HistogramControlWidget(CollapsibleWidget):
+    """Controls for histogram formatting.
+
+    Exposes:
+      - Gaussian overlay toggle
+      - Bin count (odd number) selector
+      - Extent in standard deviations (±Nσ)
+      - Optional secondary scatter overlay variable selection
+
+    The histogram formatter can query this widget (if present in its widgets list)
+    via its public getters to decide how to build the histogram config.
+    """
+
+    def __init__(self,
+                 parent: tk.Widget,
+                 title: str = "Histogram Controls",
+                 collapsed: bool = False,
+                 scatter_variables: Optional[List[str]] = None):
+        super().__init__(parent, title, collapsed)
+        self._scatter_variables = scatter_variables or []
+        # Tk variables
+        self.gaussian_var = tk.BooleanVar(value=False)
+        self.bin_count_var = tk.IntVar(value=7)  # default odd number (center + 3 each side)
+        self.sigma_extent_var = tk.DoubleVar(value=4.0)  # default ±4σ
+        self.scatter_enabled_var = tk.BooleanVar(value=False)
+        self.scatter_var_choice = tk.StringVar(value=self._scatter_variables[0] if self._scatter_variables else "")
+
+        # Callback when any control changes
+        self._change_callback: Optional[Callable[[], None]] = None
+        self._create_controls()
+
+    # UI construction
+    def _create_controls(self):  # type: ignore[override]
+        frame = self.content_frame
+
+        # Gaussian overlay toggle
+        gauss_chk = ttk.Checkbutton(frame, text="Gaussian Overlay", variable=self.gaussian_var, command=self._notify_change)
+        gauss_chk.pack(anchor='w', padx=5, pady=2)
+
+        # Bin count (odd only)
+        bins_row = ttk.Frame(frame)
+        bins_row.pack(fill='x', padx=5, pady=2)
+        ttk.Label(bins_row, text="Bins (odd):").pack(side='left')
+        self.bins_spin = ttk.Spinbox(bins_row, from_=3, to=101, increment=2, textvariable=self.bin_count_var, width=6, command=self._on_bins_changed)
+        self.bins_spin.pack(side='left', padx=4)
+
+        # Sigma extent
+        extent_row = ttk.Frame(frame)
+        extent_row.pack(fill='x', padx=5, pady=2)
+        ttk.Label(extent_row, text="Extent (±σ):").pack(side='left')
+        self.extent_spin = ttk.Spinbox(extent_row, from_=1.0, to=8.0, increment=0.5, textvariable=self.sigma_extent_var, width=6, command=self._notify_change)
+        self.extent_spin.pack(side='left', padx=4)
+
+        # Scatter overlay controls
+        if self._scatter_variables:
+            scatter_row1 = ttk.Frame(frame)
+            scatter_row1.pack(fill='x', padx=5, pady=(4,2))
+            scatter_chk = ttk.Checkbutton(scatter_row1, text="Scatter Overlay", variable=self.scatter_enabled_var, command=self._notify_change)
+            scatter_chk.pack(side='left')
+
+            scatter_row2 = ttk.Frame(frame)
+            scatter_row2.pack(fill='x', padx=20, pady=2)
+            ttk.Label(scatter_row2, text="Variable:").pack(side='left')
+            self.scatter_combo = ttk.Combobox(scatter_row2, state='readonly', values=self._scatter_variables, textvariable=self.scatter_var_choice, width=14)
+            self.scatter_combo.pack(side='left', padx=4)
+            self.scatter_combo.bind('<<ComboboxSelected>>', lambda _e: self._notify_change())
+
+        # Variable traces to enforce odd bins
+        self.bin_count_var.trace_add('write', lambda *_: self._ensure_odd_bins())
+
+    # Internal helpers
+    def _ensure_odd_bins(self):
+        try:
+            v = self.bin_count_var.get()
+            if v % 2 == 0:  # make it odd
+                self.bin_count_var.set(v + 1)
+        except Exception:
+            pass
+
+    def _on_bins_changed(self):
+        self._ensure_odd_bins()
+        self._notify_change()
+
+    def _notify_change(self):
+        if self._change_callback:
+            try:
+                self._change_callback()
+            except Exception:
+                pass
+
+    # Public API for formatter
+    def get_bin_count(self) -> int:
+        return int(self.bin_count_var.get())
+
+    def get_sigma_extent(self) -> float:
+        return float(self.sigma_extent_var.get())
+
+    def gaussian_overlay_enabled(self) -> bool:
+        return bool(self.gaussian_var.get())
+
+    def scatter_overlay_enabled(self) -> bool:
+        return bool(self.scatter_enabled_var.get()) and bool(self._scatter_variables)
+
+    def get_scatter_variable(self) -> Optional[str]:
+        if not self.scatter_overlay_enabled():
+            return None
+        return self.scatter_var_choice.get() or None
+
+    def set_change_callback(self, cb: Callable[[], None]):
+        self._change_callback = cb
+
+__all__ = [
+    # existing exports (implicitly via wildcard import usage) -- ensure new widget accessible
+    'HistogramControlWidget'
+]

@@ -60,6 +60,8 @@ class PlotManager:
                 return self._prepare_animation_data(app_state, plot_config)
             elif plot_id == 'generic_xy':
                 return self._prepare_generic_xy_data(app_state, plot_config)
+            elif plot_id == 'histogram':
+                return self._prepare_histogram_data(app_state, plot_config)
             else:
                 raise ValueError(f"Unknown plot type: {plot_id}")
         
@@ -405,3 +407,59 @@ class PlotManager:
             if k in config:
                 out[k] = config[k]
         return out
+
+    def _prepare_histogram_data(self, app_state: ApplicationState, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Prepare data for histogram plotting (pass-through & light validation).
+
+        Expectation per new schema: histogram formatters supply fully-populated
+        statistics (mean/std) and explicit bin edges. Here we only:
+          - Ensure required top-level keys exist
+          - Filter out malformed histogram entries lacking required fields
+          - Do NOT compute mean/std or edges (responsibility of formatter)
+        """
+        raw_hists = config.get('histograms', [])
+        validated: List[Dict[str, Any]] = []
+        for h in raw_hists:
+            try:
+                vals = h.get('values')
+                edges = h.get('edges')
+                if vals is None or edges is None:
+                    continue  # skip invalid
+                # Coerce to list (lightly)
+                if not isinstance(vals, list):
+                    if hasattr(vals, 'tolist'):
+                        vals = vals.tolist()
+                    else:
+                        try:
+                            vals = list(vals)
+                        except Exception:
+                            vals = []
+                if not isinstance(edges, list):
+                    if hasattr(edges, 'tolist'):
+                        edges = edges.tolist()
+                    else:
+                        try:
+                            edges = list(edges)
+                        except Exception:
+                            edges = []
+                # Minimal structural checks
+                if len(edges) < 2:
+                    continue
+                mean = h.get('mean')
+                std = h.get('std')
+                # Leave mean/std as-is (formatter responsibility); if absent, backend will display defaults
+                validated.append({
+                    'values': vals,
+                    'edges': edges,
+                    'mean': mean,
+                    'std': std,
+                    'style': h.get('style', {}),
+                    'bands': h.get('bands'),
+                })
+            except Exception:
+                continue
+        return {
+            'histograms': validated,
+            'overlays': config.get('overlays', []),
+            'title': config.get('title', 'Histogram'),
+        }
