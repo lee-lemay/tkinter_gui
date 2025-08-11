@@ -357,6 +357,12 @@ class RightPanel:
                             except Exception:
                                 pass
                     self.logger.debug(f"{event}: no focus or not loaded; plots cleared and widgets reset")
+
+                # After plot refresh/clear, apply capability-based tab enable/disable
+                try:
+                    self._apply_capability_tab_visibility(focus_info)
+                except Exception as e2:
+                    self.logger.debug(f"Capability tab visibility update skipped due to error: {e2}")
             
         except Exception as e:
             self.logger.error(f"Error handling state change '{event}': {e}")
@@ -375,3 +381,54 @@ class RightPanel:
         except Exception as e:
             self.logger.error(f"Error getting current tab: {e}")
             return ""
+
+    # Capability-based tab visibility -------------------------------------------------
+    def _find_tab_id_by_text(self, text: str):
+        try:
+            for tab_id in self.notebook.tabs():
+                if self.notebook.tab(tab_id, 'text') == text:
+                    return tab_id
+        except Exception:
+            pass
+        return None
+
+    def _apply_capability_tab_visibility(self, focus_info):
+        """Enable/disable East Error tabs based on dataset capabilities.
+
+        Rules:
+          - If focus dataset has 'precomputed_errors' capability AND is loaded -> enable
+          - Else -> disable XY East Error & East Error Histogram tabs
+          - North error tabs remain always enabled
+        """
+        has_precomputed = False
+        try:
+            if focus_info and getattr(focus_info, 'status', None) and getattr(focus_info.status, 'value', '') == 'loaded':
+                caps = getattr(focus_info, 'capabilities', []) or []
+                has_precomputed = 'precomputed_errors' in caps
+        except Exception:
+            has_precomputed = False
+
+        for tab_text in ('East Error', 'East Err Hist'):
+            tab_id = self._find_tab_id_by_text(tab_text)
+            if tab_id is not None:
+                try:
+                    self.notebook.tab(tab_id, state=('normal' if has_precomputed else 'disabled'))
+                except Exception:
+                    pass
+
+        # If current selection becomes disabled, shift to a safe tab
+        try:
+            current = self.get_current_tab()
+            if current in ('East Error', 'East Err Hist') and not has_precomputed:
+                # Prefer North Error tab
+                north_id = self._find_tab_id_by_text('North Error')
+                if north_id is not None and self.notebook.tab(north_id, 'state') == 'normal':
+                    self.notebook.select(north_id)
+                else:
+                    # Fallback: first enabled tab
+                    for tab_id in self.notebook.tabs():
+                        if self.notebook.tab(tab_id, 'state') == 'normal':
+                            self.notebook.select(tab_id)
+                            break
+        except Exception:
+            pass
