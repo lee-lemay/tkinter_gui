@@ -10,6 +10,7 @@ from tkinter import ttk
 from typing import Optional, Any, Dict
 import logging
 
+from ..utils.schema_access import get_col
 from ..models.application_state import DatasetInfo
 from datetime import datetime
 import math
@@ -109,18 +110,24 @@ class OverviewTabWidget(ttk.Frame):
         track_range_str = "-"
         track_count_str = "-"
         earliest_track_dt = None
+        schema = getattr(ds, 'schema', None)
         if ds.tracks_df is not None and not ds.tracks_df.empty:
             try:
-                if 'track_id' in ds.tracks_df.columns:
-                    track_count_str = str(len(ds.tracks_df['track_id'].dropna().unique()))
+                track_col = get_col(schema, 'tracks', 'track_id')
+                if track_col in ds.tracks_df.columns:
+                    track_count_str = str(len(ds.tracks_df[track_col].dropna().unique()))
                 else:
-                    track_count_str = str(len(ds.tracks_df))
-                if 'timestamp' in ds.tracks_df.columns:
-                    tseries = ds.tracks_df['timestamp'].dropna()
+                    self.logger.error(f"{track_col} not in dataset {ds.name}.tracks_df.columns")
+                    
+                timestamp_col = get_col(schema, 'tracks', 'timestamp')
+                if timestamp_col in ds.tracks_df.columns:
+                    tseries = ds.tracks_df[timestamp_col].dropna()
                     if not tseries.empty:
                         earliest_track_dt = tseries.min()
                         latest_track_dt = tseries.max()
                         track_range_str = f"{self._fmt_ts(earliest_track_dt)} -> {self._fmt_ts(latest_track_dt)}"
+                else:
+                    self.logger.error(f"{timestamp_col} not in dataset {ds.name}.tracks_df.columns")
             except Exception:
                 pass
         self.fields["Track Count"].set(track_count_str)
@@ -132,13 +139,14 @@ class OverviewTabWidget(ttk.Frame):
         earliest_truth_dt = None
         if ds.truth_df is not None and not ds.truth_df.empty:
             try:
-                id_col = 'id' if 'id' in ds.truth_df.columns else None
+                id_col = get_col(schema, 'truth', 'truth_id')
                 if id_col:
                     truth_count_str = str(len(ds.truth_df[id_col].dropna().unique()))
                 else:
                     truth_count_str = str(len(ds.truth_df))
-                if 'timestamp' in ds.truth_df.columns:
-                    tseries = ds.truth_df['timestamp'].dropna()
+                timestamp_col = get_col(schema, 'truth', 'timestamp')
+                if timestamp_col in ds.truth_df.columns:
+                    tseries = ds.truth_df[timestamp_col].dropna()
                     if not tseries.empty:
                         earliest_truth_dt = tseries.min()
                         latest_truth_dt = tseries.max()

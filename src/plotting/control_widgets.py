@@ -9,6 +9,7 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Optional, List, Dict, Callable, Any
 import logging
+from ..utils.schema_access import get_col
 
 
 class CollapsibleWidget(ttk.Frame):
@@ -362,15 +363,23 @@ class DataSelectionWidget(CollapsibleWidget):
             
             # Extract track IDs
             track_ids = []
+            schema = getattr(focus_info, 'schema', None)
             if focus_info.tracks_df is not None and not focus_info.tracks_df.empty:
-                if 'track_id' in focus_info.tracks_df.columns:
-                    track_ids = focus_info.tracks_df['track_id'].unique().tolist()
+                try:
+                    track_col = get_col(schema, 'tracks', 'track_id')
+                    if track_col in focus_info.tracks_df.columns:
+                        track_ids = focus_info.tracks_df[track_col].unique().tolist()
+                    else:
+                        self.logger.error(f"{track_col} not in dataset {focus_info.name}.tracks_df.columns")
+                except Exception as e:
+                    self.logger.error(f"Error loading track ids from {focus_info.name}: {e}")
             
             # Extract truth IDs
             truth_ids = []
             if focus_info.truth_df is not None and not focus_info.truth_df.empty:
-                if 'id' in focus_info.truth_df.columns:
-                    truth_ids = focus_info.truth_df['id'].unique().tolist()
+                truth_col = get_col(schema, 'truth', 'truth_id')
+                if truth_col in focus_info.truth_df.columns:
+                    truth_ids = focus_info.truth_df[truth_col].unique().tolist()
             
             # Update the UI
             self._populate_tracks(track_ids)
@@ -834,8 +843,13 @@ class TrackSelectionWidget(CollapsibleWidget):
             # Extract track IDs
             track_ids = []
             if focus_info.tracks_df is not None and not focus_info.tracks_df.empty:
-                if 'track_id' in focus_info.tracks_df.columns:
-                    track_ids = focus_info.tracks_df['track_id'].unique().tolist()
+                from ..utils.schema_access import get_col
+                schema = getattr(focus_info, 'schema', None)
+                track_col = get_col(schema, 'tracks', 'track_id')
+                if track_col in focus_info.tracks_df.columns:
+                    track_ids = focus_info.tracks_df[track_col].unique().tolist()
+                else:
+                    self.logger.error(f"{track_col} not in dataset {focus_info.name}.tracks_df.columns")
             
             # Update the UI
             self._populate_tracks(track_ids)

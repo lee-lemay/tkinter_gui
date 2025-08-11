@@ -159,22 +159,6 @@ class DataInterface(ABC):
             Dictionary mapping dataset names to track counts
         """
         pass
-    
-    @abstractmethod
-    def get_lat_lon_data(self, dataset_name: str, 
-                        include_tracks: bool = True, 
-                        include_truth: bool = True) -> Optional[Dict[str, Any]]:
-        """
-        Get latitude/longitude data for a specific dataset.
-        
-        Args:
-            dataset_name: Name of the dataset
-            include_tracks: Whether to include track positions
-            include_truth: Whether to include truth positions
-            
-        Returns:
-            Dictionary containing lat/lon data, or None if error
-        """
         pass
 
 
@@ -451,42 +435,3 @@ class MockDataInterface(DataInterface):
             'sample_dataset_alpha': 25,
             'sample_dataset_beta': 18,
         }
-    
-    def get_lat_lon_data(self, dataset_name: str, 
-                        include_tracks: bool = True, 
-                        include_truth: bool = True) -> Optional[Dict[str, Any]]:
-        """
-        Get latitude/longitude data for a specific dataset.
-        
-        This mock implementation returns placeholder coordinate data.
-        """
-        self.logger.debug(f"Getting lat/lon data for dataset: {dataset_name}")
-        
-        import numpy as np
-        
-        result = {}
-        base_lat, base_lon = 40.7128, -74.0060  # NYC coordinates
-        
-        if include_tracks:
-            n_tracks = 50
-            tracks_lat = base_lat + np.random.normal(0, 0.01, n_tracks)
-            tracks_lon = base_lon + np.random.normal(0, 0.01, n_tracks)
-            
-            result['tracks'] = pd.DataFrame({
-                'lat': tracks_lat,
-                'lon': tracks_lon,
-                'track_id': range(n_tracks)
-            })
-        
-        if include_truth:
-            n_truth = 25
-            truth_lat = base_lat + np.random.normal(0, 0.005, n_truth)
-            truth_lon = base_lon + np.random.normal(0, 0.005, n_truth)
-            
-            result['truth'] = pd.DataFrame({
-                'lat': truth_lat,
-                'lon': truth_lon,
-                'id': range(n_truth)
-            })
-        
-        return result

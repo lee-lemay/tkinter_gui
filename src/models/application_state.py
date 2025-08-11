@@ -42,6 +42,11 @@ class DatasetInfo:
     truth_df: Optional[pd.DataFrame] = None
     detections_df: Optional[pd.DataFrame] = None
     tracks_df: Optional[pd.DataFrame] = None
+    errors_df: Optional[pd.DataFrame] = None
+    # Optional logical schema mapping: role -> { logical_name -> physical_column }
+    schema: Optional[Dict[str, Dict[str, str]]] = None
+    # Capability flags (e.g., 'precomputed_errors')
+    capabilities: List[str] = field(default_factory=list)
 
 
 class ApplicationState:

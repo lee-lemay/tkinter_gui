@@ -10,6 +10,8 @@ from tkinter import ttk
 from typing import List, Optional, Any, Dict
 import logging
 
+from ..utils.schema_access import get_col
+
 from .base_geospatial_tab import BaseGeospatialTabWidget
 from .backends import PlotBackend
 from .control_widgets import PlaybackControlWidget, CoordinateRangeWidget
@@ -251,13 +253,18 @@ class AnimationTabWidget(BaseGeospatialTabWidget):
             
             # Setup the animation if we have data
             if plot_data and 'error' not in plot_data:
-                # Store original animation data for frame filtering
+                focus_info           = app_state.get_focus_dataset_info() # type: ignore
+                tracks_timestamp_col = get_col(focus_info.schema, 'tracks', 'timestamp')
+                truth_timestamp_col  = get_col(focus_info.schema, 'truth', 'timestamp')
+                # Store original animation data for frame filtering                
                 self.original_animation_data = {
                     "tracks_df": plot_data.get('tracks_df', None),
                     "truth_df": plot_data.get('truth_df', None),
                     "time_range": plot_data.get('time_range', {}),
                     "lat_range": plot_data.get('lat_range', (-1.0, 1.0)),
-                    "lon_range": plot_data.get('lon_range', (-1.0, 1.0))
+                    "lon_range": plot_data.get('lon_range', (-1.0, 1.0)),
+                    "tracks_timestamp_col": tracks_timestamp_col,
+                    "truth_timestamp_col": truth_timestamp_col
                 }
 
                 # Update coordinate ranges from calculated data
@@ -268,13 +275,13 @@ class AnimationTabWidget(BaseGeospatialTabWidget):
                 
                 if plot_data.get('tracks_df') is not None:
                     tracks_df = plot_data['tracks_df']
-                    if 'timestamp' in tracks_df.columns:
-                        all_timestamps.update(tracks_df['timestamp'])
+                    if tracks_timestamp_col in tracks_df.columns:
+                        all_timestamps.update(tracks_df[tracks_timestamp_col])
 
                 if plot_data.get('truth_df') is not None:
                     truth_df = plot_data['truth_df']
-                    if 'timestamp' in truth_df.columns:
-                        all_timestamps.update(truth_df['timestamp'])
+                    if truth_timestamp_col in truth_df.columns:
+                        all_timestamps.update(truth_df[truth_timestamp_col])
                 
                 # Sort timestamps for frame sequence
                 sorted_timestamps = sorted(list(all_timestamps))
@@ -358,15 +365,17 @@ class AnimationTabWidget(BaseGeospatialTabWidget):
         }
         
         # Filter tracks
-        if self.original_animation_data.get('tracks_df') is not None:
+        if self.original_animation_data.get('tracks_df') is not None:            
+            tracks_timestamp_col = self.original_animation_data.get('tracks_timestamp_col')
             tracks_df = self.original_animation_data['tracks_df']
-            filtered_tracks = tracks_df[tracks_df['timestamp'] <= current_timestamp]
+            filtered_tracks = tracks_df[tracks_df[tracks_timestamp_col] <= current_timestamp]
             filtered_data['tracks_df'] = filtered_tracks
         
         # Filter truth
         if self.original_animation_data.get('truth_df') is not None:
             truth_df = self.original_animation_data['truth_df']
-            filtered_truth = truth_df[truth_df['timestamp'] <= current_timestamp]
+            truth_timestamp_col = self.original_animation_data.get('truth_timestamp_col')
+            filtered_truth = truth_df[truth_df[truth_timestamp_col] <= current_timestamp]
             filtered_data['truth_df'] = filtered_truth
         
         # Include coordinate ranges

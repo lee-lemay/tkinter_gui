@@ -448,10 +448,18 @@ class LeftPanel:
                 
                 # For tracks, count unique track IDs if available
                 if dataset_info.tracks_df is not None and not dataset_info.tracks_df.empty:
-                    if 'track_id' in dataset_info.tracks_df.columns:
-                        tracks_str = str(len(dataset_info.tracks_df['track_id'].unique()))
-                    else:
-                        tracks_str = str(len(dataset_info.tracks_df))
+                    try:
+                        from ..utils.schema_access import get_col
+                        schema = getattr(dataset_info, 'schema', None)
+                        track_col = get_col(schema, 'tracks', 'track_id')
+                        if track_col in dataset_info.tracks_df.columns:
+                            tracks_str = str(len(dataset_info.tracks_df[track_col].unique()))
+                        else:
+                            tracks_str = "0"
+                            self.logger.error(f"{track_col} not in dataset {dataset_info.name}.tracks_df.columns")
+                    except Exception as e:
+                        tracks_str = "0"
+                        self.logger.error(f"Error counting track ids from {dataset_info.name}: {e}")
                 else:
                     tracks_str = "0"
             else:

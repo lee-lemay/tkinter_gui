@@ -11,6 +11,7 @@ from pathlib import Path
 
 from ..models.application_state import ApplicationState, DatasetInfo
 from ..business.data_interface import DataInterface
+from ..utils.schema_access import get_col
 
 
 class PlotManager:
@@ -85,10 +86,17 @@ class PlotManager:
             if dataset_name in app_state.datasets:
                 dataset_info = app_state.datasets[dataset_name]
                 if dataset_info.status.value == "loaded" and dataset_info.tracks_df is not None:
-                    if 'track_id' in dataset_info.tracks_df.columns:
-                        count = len(dataset_info.tracks_df['track_id'].unique())
-                    else:
-                        count = len(dataset_info.tracks_df)
+                    try:
+                        schema = getattr(dataset_info, 'schema', None)
+                        track_col = get_col(schema, 'tracks', 'track_id')
+                        if track_col in dataset_info.tracks_df.columns:
+                            count = len(dataset_info.tracks_df[track_col].unique())
+                        else:
+                            count = 0
+                            self.logger.error(f"{track_col} not in dataset {dataset_info.name}.tracks_df.columns")
+                    except Exception:
+                            count = 0
+                            self.logger.error(f"Error counting tracks in {dataset_info.name}")
                     track_counts[dataset_name] = count
                 else:
                     track_counts[dataset_name] = 0
@@ -131,7 +139,9 @@ class PlotManager:
             elif isinstance(tracks_selection, list) and len(tracks_selection) > 0:
                 # Normalize selection types to match dataframe dtype (handles str/int mismatch)
                 try:
-                    col_dtype = tracks_df['track_id'].dtype
+                    schema = getattr(focus_dataset, 'schema', None)
+                    track_col = get_col(schema, 'tracks', 'track_id')
+                    col_dtype = tracks_df[track_col].dtype
                     if col_dtype.kind in 'iu' and any(isinstance(x, str) for x in tracks_selection):
                         norm_selection = []
                         for x in tracks_selection:
@@ -143,16 +153,23 @@ class PlotManager:
                 except Exception:
                     pass
                 # Include specific track_ids
-                filtered_tracks = tracks_df[tracks_df['track_id'].isin(tracks_selection)]
+                schema = getattr(focus_dataset, 'schema', None)
+                track_col = get_col(schema, 'tracks', 'track_id')
+                filtered_tracks = tracks_df[tracks_df[track_col].isin(tracks_selection)]
             else:
                 # Empty list or other values - include no tracks
                 filtered_tracks = tracks_df.iloc[0:0]  # Empty DataFrame with same structure
             
-            if not filtered_tracks.empty and 'lat' in filtered_tracks.columns and 'lon' in filtered_tracks.columns:
-                result['tracks_df'] = filtered_tracks[['track_id', 'timestamp', 'lat', 'lon']].copy()
-                # Collect lat/lon for range calculation
-                all_lats.extend(filtered_tracks['lat'].dropna().tolist())
-                all_lons.extend(filtered_tracks['lon'].dropna().tolist())
+            if not filtered_tracks.empty:
+                schema = getattr(focus_dataset, 'schema', None)
+                track_col = get_col(schema, 'tracks', 'track_id')
+                ts_col    = get_col(schema, 'tracks', 'timestamp')
+                lat_col   = get_col(schema, 'tracks', 'lat')
+                lon_col   = get_col(schema, 'tracks', 'lon')
+                needed = [track_col, ts_col, lat_col, lon_col]
+                result['tracks_df'] = filtered_tracks[needed].copy()
+                all_lats.extend(filtered_tracks[lat_col].dropna().tolist())
+                all_lons.extend(filtered_tracks[lon_col].dropna().tolist())
 
         # Process truth data for scatter plot
         truth_selection = config.get('truth', "All")
@@ -168,7 +185,9 @@ class PlotManager:
             elif isinstance(truth_selection, list) and len(truth_selection) > 0:
                 # Normalize selection types (str/int)
                 try:
-                    col_dtype = truth_df['id'].dtype
+                    schema = getattr(focus_dataset, 'schema', None)
+                    truth_id_col = get_col(schema, 'truth', 'truth_id')
+                    col_dtype = truth_df[truth_id_col].dtype
                     if col_dtype.kind in 'iu' and any(isinstance(x, str) for x in truth_selection):
                         norm_truth = []
                         for x in truth_selection:
@@ -180,16 +199,23 @@ class PlotManager:
                 except Exception:
                     pass
                 # Include specific truth ids
-                filtered_truth = truth_df[truth_df['id'].isin(truth_selection)]
+                schema = getattr(focus_dataset, 'schema', None)
+                truth_id_col = get_col(schema, 'truth', 'truth_id')
+                filtered_truth = truth_df[truth_df[truth_id_col].isin(truth_selection)]
             else:
                 # Empty list or other values - include no truth
                 filtered_truth = truth_df.iloc[0:0]  # Empty DataFrame with same structure
             
             if not filtered_truth.empty:
-                result['truth_df'] = filtered_truth[['id', 'timestamp', 'lat', 'lon']].copy()
-                # Collect lat/lon for range calculation
-                all_lats.extend(filtered_truth['lat'].dropna().tolist())
-                all_lons.extend(filtered_truth['lon'].dropna().tolist())
+                schema = getattr(focus_dataset, 'schema', None)
+                truth_id_col = get_col(schema, 'truth', 'truth_id')
+                ts_col  = get_col(schema, 'truth', 'timestamp')
+                lat_col = get_col(schema, 'truth', 'lat')
+                lon_col = get_col(schema, 'truth', 'lon')
+                needed = [truth_id_col, ts_col, lat_col, lon_col]
+                result['truth_df'] = filtered_truth[needed].copy()
+                all_lats.extend(filtered_truth[lat_col].dropna().tolist())
+                all_lons.extend(filtered_truth[lon_col].dropna().tolist())
 
         if 'lat_range' in config and config['lat_range'] is not None:
             result['lat_range'] = config['lat_range']
@@ -258,10 +284,12 @@ class PlotManager:
         
         # Calculate time range for animation
         all_times = []
+        ts_col    = get_col(focus_dataset.schema, 'tracks', 'timestamp')
         if result['tracks_df'] is not None and not result['tracks_df'].empty:
-            all_times.extend(result['tracks_df']['timestamp'].tolist())
+            all_times.extend(result['tracks_df'][ts_col].tolist())
+        ts_col    = get_col(focus_dataset.schema, 'truth', 'timestamp')
         if result['truth_df'] is not None and not result['truth_df'].empty:
-            all_times.extend(result['truth_df']['timestamp'].tolist())
+            all_times.extend(result['truth_df'][ts_col].tolist())
         
         if all_times:
             result['time_range'] = {
@@ -349,27 +377,27 @@ class PlotManager:
         id_col = None
         if source == 'truth':
             df = focus.truth_df
-            id_col = 'id'
+            id_col = get_col(focus.schema, 'truth', 'truth_id')
         elif source == 'detections':
             df = focus.detections_df
-            id_col = 'track_id' if (df is not None and 'track_id' in df.columns) else None
+            id_col = get_col(focus.schema, 'tracks', 'track_id')
         else:
             df = focus.tracks_df
-            id_col = 'track_id'
+            id_col = get_col(focus.schema, 'tracks', 'track_id')
 
         if df is None or df.empty:
             return {'error': f'No data available in source: {source}'}
 
         filtered = df
         # Track filtering
-        if 'tracks' in config and id_col == 'track_id' and id_col in filtered.columns:
+        if 'tracks' in config and id_col == get_col(focus.schema, 'tracks', 'track_id') and id_col in filtered.columns:
             sel = config['tracks']
             if sel == "None":
                 filtered = filtered.iloc[0:0]
             elif isinstance(sel, list) and len(sel) > 0 and "All" not in sel:
                 filtered = filtered[filtered[id_col].isin(sel)]
         # Truth filtering
-        if 'truth' in config and id_col == 'id' and id_col in filtered.columns:
+        if 'truth' in config and id_col == get_col(focus.schema, 'truth', 'truth_id') and id_col in filtered.columns:
             sel = config['truth']
             if sel == "None":
                 filtered = filtered.iloc[0:0]

@@ -36,9 +36,16 @@ MARKER_CYCLE = ['o','s','^','D','v','>','<','P','X','*']
 
 @dataclass
 class FocusDataFrames:
-    """Lightweight container for focus dataset dataframes of interest."""
+    """Lightweight container for focus dataset dataframes + metadata needed by formatters.
+
+    Carries optional schema + capabilities to allow access-layer indirection
+    without each formatter re-fetching the full DatasetInfo.
+    """
     tracks_df: Any = None
     truth_df: Any = None
+    errors_df: Any = None
+    schema: Any = None  # mapping or None
+    capabilities: Any = None  # list or None
 
 class FormatterSupport:
     """Namespace of static helper methods used by formatters."""
@@ -50,9 +57,13 @@ class FormatterSupport:
             focus = app_state.get_focus_dataset_info()
             if not focus or focus.status.value != "loaded":
                 return None
-            tracks_df = getattr(focus, 'tracks_df', None)
-            truth_df = getattr(focus, 'truth_df', None)
-            return FocusDataFrames(tracks_df=tracks_df, truth_df=truth_df)
+            return FocusDataFrames(
+                tracks_df   =getattr(focus, 'tracks_df', None),
+                truth_df    =getattr(focus, 'truth_df', None),
+                errors_df   =getattr(focus, 'errors_df', None),
+                schema      =getattr(focus, 'schema', None),
+                capabilities=getattr(focus, 'capabilities', []),
+            )
         except Exception:
             return None
 
@@ -72,24 +83,6 @@ class FormatterSupport:
             except Exception:
                 continue
         return None
-
-    @staticmethod
-    def compute_nearest_truth_rows(track_rows, truth_df) -> List[Tuple[Any, Any]]:
-        """Return list of (track_row, matched_truth_row) using nearest timestamp."""
-        pairs: List[Tuple[Any, Any]] = []
-        if truth_df is None or track_rows is None:
-            return pairs
-        try:
-            for _, tr in track_rows.iterrows():
-                try:
-                    time_diffs = (truth_df['timestamp'] - tr['timestamp']).abs()
-                    closest_idx = time_diffs.idxmin()
-                    pairs.append((tr, truth_df.loc[closest_idx]))
-                except Exception:
-                    continue
-        except Exception:
-            return []
-        return pairs
 
     @staticmethod
     def build_time_axis_and_truncate(

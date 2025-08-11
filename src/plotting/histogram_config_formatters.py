@@ -14,6 +14,7 @@ from typing import Any, Dict, Sequence, Callable, Optional, List
 import math
 
 from .formatter_support import FormatterSupport as FS
+from ..utils.schema_access import get_col
 
 Formatter = Callable[[Any, Sequence[Any]], Dict[str, Any]]
 FORMATTER_REGISTRY: Dict[str, Formatter] = {}
@@ -30,38 +31,77 @@ def get_hist_formatter(name: str) -> Optional[Formatter]:
 # Helper to extract track selection (reuse existing logic in FS.extract_selected_tracks)
 
 def _collect_track_errors(app_state, widgets: Sequence[Any], component: str) -> List[float]:
+    """Return per-track errors using precomputed errors if available or compute ad-hoc.
+
+    component: 'north' or 'east'
+    """
     focus = FS.get_focus_or_empty(app_state)
-    if not focus or focus.tracks_df is None or focus.truth_df is None:
+    if not focus:
         return []
-    tracks_df = focus.tracks_df
-    truth_df = focus.truth_df
-    if tracks_df.empty or truth_df.empty:
+
+    # Prefer precomputed errors dataframe if capability present
+    if 'precomputed_errors' in getattr(focus, 'capabilities', []):
+        errors_df = getattr(focus, 'errors_df', None)
+        if errors_df is not None and not errors_df.empty:
+            schema = getattr(focus, 'schema', None)
+            track_col = get_col(schema, 'errors', 'track_id')
+            val_col = get_col(schema, 'errors', f'{component}_error')
+            if val_col in errors_df.columns:
+                selected_tracks = FS.extract_selected_tracks(widgets)
+                df = errors_df
+                if selected_tracks:
+                    if track_col in df.columns:
+                        df = df[df[track_col].isin(selected_tracks)]
+                if track_col in df.columns and val_col in df.columns and not df.empty:
+                    try:
+                        return [float(v) for v in df[val_col].dropna().tolist()]
+                    except Exception:
+                        return []
+        # Fall through to compute if no usable precomputed values
+
+    # Fallback manual computation
+    tracks_df = getattr(focus, 'tracks_df', None)
+    truth_df  = getattr(focus, 'truth_df', None)
+    if tracks_df is None or truth_df is None or tracks_df.empty or truth_df.empty:
+        return []
+
+    # Resolve columns via schema mapping
+    schema = getattr(focus, 'schema', None)
+    t_ts_col   = get_col(schema, 'tracks', 'timestamp')
+    t_lat_col  = get_col(schema, 'tracks', 'lat')
+    t_lon_col  = get_col(schema, 'tracks', 'lon')
+    t_id_col   = get_col(schema, 'tracks', 'track_id')
+    tr_ts_col  = get_col(schema, 'truth', 'timestamp')
+    tr_lat_col = get_col(schema, 'truth', 'lat')
+    tr_lon_col = get_col(schema, 'truth', 'lon')
+
+    if any(c not in tracks_df.columns for c in [t_ts_col, t_lat_col, t_lon_col]) or any(c not in truth_df.columns for c in [tr_ts_col, tr_lat_col, tr_lon_col]):
         return []
 
     selected_tracks = FS.extract_selected_tracks(widgets)
     if selected_tracks is not None and len(selected_tracks) == 0:
         return []
-    if selected_tracks:
-        if 'track_id' in tracks_df.columns:
-            tracks_df = tracks_df[tracks_df['track_id'].isin(selected_tracks)]
+    if selected_tracks and t_id_col in tracks_df.columns:
+        tracks_df = tracks_df[tracks_df[t_id_col].isin(selected_tracks)]
         if tracks_df.empty:
             return []
 
-    import numpy as np
-
     errors: List[float] = []
-    for _, row in tracks_df.iterrows():
-        try:
-            diffs = abs(truth_df['timestamp'] - row['timestamp'])
-            idx = diffs.idxmin()
-            truth_row = truth_df.loc[idx]
-            if component == 'north':
-                err = (row['lat'] - truth_row['lat']) * 111000.0
-            else:  # east
-                err = (row['lon'] - truth_row['lon']) * 111000.0 * math.cos(math.radians(truth_row['lat']))
-            errors.append(float(err))
-        except Exception:
-            continue
+    try:
+        for _, row in tracks_df.iterrows():
+            try:
+                diffs = (truth_df[tr_ts_col] - row[t_ts_col]).abs()
+                idx = diffs.idxmin()
+                truth_row = truth_df.loc[idx]
+                if component == 'north':
+                    err = (row[t_lat_col] - truth_row[tr_lat_col]) * 111000.0
+                else:
+                    err = (row[t_lon_col] - truth_row[tr_lon_col]) * 111000.0 * math.cos(math.radians(truth_row[tr_lat_col]))
+                errors.append(float(err))
+            except Exception:
+                continue
+    except Exception:
+        return []
     return errors
 
 def _build_error_histogram(app_state, widgets: Sequence[Any], component: str, title: str) -> Dict[str, Any]:
@@ -173,7 +213,10 @@ def _build_error_histogram(app_state, widgets: Sequence[Any], component: str, ti
                 error_vals: List[float] = []
                 for _, row in tracks_df.iterrows():
                     try:
-                        diffs = abs(truth_df['timestamp'] - row['timestamp'])
+                        schema = focus.schema if focus else None
+                        track_time_col = get_col(schema, 'tracks', 'timestamp')
+                        truth_time_col = get_col(schema, 'truth', 'timestamp')
+                        diffs = abs(truth_df[truth_time_col] - row[track_time_col])
                         idx = diffs.idxmin()
                         truth_row = truth_df.loc[idx]
                         if component == 'north':

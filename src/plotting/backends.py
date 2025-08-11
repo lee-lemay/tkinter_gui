@@ -87,20 +87,6 @@ class PlotBackend(ABC):
         pass
     
     @abstractmethod
-    def export_plot(self, filename: str, format: str = 'png') -> bool:
-        """
-        Export the current plot to a file.
-        
-        Args:
-            filename: Output file path
-            format: Export format ('png', 'pdf', 'svg', etc.)
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        pass
-    
-    @abstractmethod
     def get_widget(self):
         """
         Get the widget that can be embedded in a tkinter interface.
@@ -306,51 +292,67 @@ class MatplotlibBackend(PlotBackend):
             
     def _plot_tracks_data(self, ax, tracks_df: pd.DataFrame, plot_mode: str, config: Dict[str, Any]):
         """Plot tracks data in specified mode."""
-        
+        from ..utils.schema_access import get_col
+        schema = config.get('schema')  # optional injection
+        track_col = get_col(schema, 'tracks', 'track_id')
+        lat_col   = get_col(schema, 'tracks', 'lat')
+        lon_col   = get_col(schema, 'tracks', 'lon')
+
+        first_id = None
+        if track_col in tracks_df.columns and not tracks_df.empty:
+            try:
+                first_id = tracks_df[track_col].iloc[0]
+            except Exception:
+                first_id = None
+
         if plot_mode == 'scatter':
-            # Scatter mode: plot individual points grouped by track ID
-            for track_id, track_data in tracks_df.groupby('track_id'):
-                lat = track_data['lat'].values
-                lon = track_data['lon'].values
+            group_iter = tracks_df.groupby(track_col)
+            for track_id, track_data in group_iter:
+                lat = track_data[lat_col].values
+                lon = track_data[lon_col].values
                 if len(lat) != len(lon):
                     raise ValueError(f"Track {track_id} has mismatched lat/lon lengths")
                 ax.scatter(lon, lat, s=10, alpha=0.5, label=f'Track {track_id}')
-        
+
         elif plot_mode == 'trajectory':
-            # Trajectory mode: plot connected lines with markers
-            for track_id in tracks_df['track_id'].unique():
-                track_data = tracks_df[tracks_df['track_id'] == track_id]
-                ax.plot(track_data['lon'], track_data['lat'], 
-                    'b-', alpha=0.6, linewidth=2, 
-                    label='Track Trajectory' if track_id == tracks_df['track_id'].iloc[0] else "")
-                
-                # Mark start and end points
-                ax.scatter(track_data['lon'].iloc[0], track_data['lat'].iloc[0], 
-                        c='green', s=100, marker='o', 
-                        label='Start' if track_id == tracks_df['track_id'].iloc[0] else "")
-                ax.scatter(track_data['lon'].iloc[-1], track_data['lat'].iloc[-1], 
-                        c='red', s=100, marker='s', 
-                        label='End' if track_id == tracks_df['track_id'].iloc[0] else "")
-                
+            
+            for track_id in tracks_df[track_col].unique():
+                track_data = tracks_df[tracks_df[track_col] == track_id]
+                ax.plot(track_data[lon_col], track_data[lat_col], 'b-', alpha=0.6, linewidth=2,
+                        label='Track Trajectory' if track_id == first_id else "")
+                ax.scatter(track_data[lon_col].iloc[0], track_data[lat_col].iloc[0], c='green', s=100, marker='o',
+                            label='Start' if track_id == first_id else "")
+                ax.scatter(track_data[lon_col].iloc[-1], track_data[lat_col].iloc[-1], c='red', s=100, marker='s',
+                            label='End' if track_id == first_id else "")
+               
     def _plot_truth_data(self, ax, truth_df: pd.DataFrame, plot_mode: str, config: Dict[str, Any]):
         """Plot truth data in specified mode."""
-        
+        from ..utils.schema_access import get_col
+        schema = config.get('schema')
+        truth_id_col = get_col(schema, 'truth', 'truth_id')
+        lat_col = get_col(schema, 'truth', 'lat')
+        lon_col = get_col(schema, 'truth', 'lon')
+
+        first_id = None
+        if not truth_df.empty:
+            try:
+                first_id = truth_df[truth_id_col].iloc[0]
+            except Exception:
+                first_id = None
+
         if plot_mode == 'scatter':
-            # Scatter mode: plot individual points grouped by truth ID
-            for truth_id, truth_data in truth_df.groupby('id'):
-                lat = truth_data['lat'].values
-                lon = truth_data['lon'].values
+            group_iter = truth_df.groupby(truth_id_col) 
+            for truth_id, truth_data in group_iter:
+                lat = truth_data[lat_col].values
+                lon = truth_data[lon_col].values
                 if len(lat) != len(lon):
                     raise ValueError("Truth data has mismatched lat/lon lengths")
                 ax.scatter(lon, lat, s=10, alpha=0.5, c='red', label=f'Truth {truth_id}')
-        
         elif plot_mode == 'trajectory':
-            # Trajectory mode: plot connected lines
-            for truth_id in truth_df['id'].unique():
-                truth_data = truth_df[truth_df['id'] == truth_id]
-                ax.plot(truth_data['lon'], truth_data['lat'], 
-                    'r--', alpha=0.6, linewidth=2, 
-                    label='Truth Trajectory' if truth_id == truth_df['id'].iloc[0] else "")
+            for truth_id in truth_df[truth_id_col].unique():
+                truth_data = truth_df[truth_df[truth_id_col] == truth_id]
+                ax.plot(truth_data[lon_col], truth_data[lat_col], 'r--', alpha=0.6, linewidth=2,
+                        label='Truth Trajectory' if truth_id == first_id else "")
     
     def _apply_geospatial_styling(self, ax, config: Dict[str, Any]):
         """Apply common styling to geospatial plots."""
@@ -551,15 +553,6 @@ class MatplotlibBackend(PlotBackend):
                 return False
         except Exception as e:
             self.logger.error(f"Error refreshing plot: {e}")
-            return False
-    
-    def export_plot(self, filename: str, format: str = 'png') -> bool:
-        """Export the plot."""
-        try:
-            self.figure.savefig(filename, format=format, dpi=300, bbox_inches='tight')
-            return True
-        except Exception as e:
-            self.logger.error(f"Error exporting plot: {e}")
             return False
     
     def get_widget(self):

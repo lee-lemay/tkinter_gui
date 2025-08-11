@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Tuple, Sequence, Protocol, Callable, Optional
 import itertools
 from .formatter_support import FormatterSupport as FS
+from ..utils.schema_access import get_col
 
 class Formatter(Protocol):  # structural type for static checking
     def __call__(self, app_state, widgets: Sequence[Any]) -> Dict[str, Any]: ...  # pragma: no cover
@@ -31,44 +32,75 @@ def north_error_over_time(app_state, widgets: Sequence[Any]) -> Dict[str, Any]:
     series are truncated to the shortest length so that a shared X axis can be used.
     """
     focus_dfs = FS.get_focus_or_empty(app_state)
-    if not focus_dfs or focus_dfs.tracks_df is None or focus_dfs.truth_df is None:
+    if not focus_dfs:
         return {'x': [], 'y': [], 'title': 'North Error'}
-    tracks_df = focus_dfs.tracks_df
-    truth_df = focus_dfs.truth_df
-    if tracks_df.empty or truth_df.empty:
-        return {'x': [], 'y': [], 'title': 'North Error'}
+    schema = getattr(focus_dfs, 'schema', None)
+    capabilities = getattr(focus_dfs, 'capabilities', []) or []
 
     # Track selection
     selected_tracks = FS.extract_selected_tracks(widgets)
     if selected_tracks is None or len(selected_tracks) == 0:
         return {'x': [], 'y': [], 'title': 'North Error'}
-    if 'track_id' in tracks_df.columns:
-        tracks_df = tracks_df[tracks_df['track_id'].isin(selected_tracks)]
-    if tracks_df.empty:
-        return {'x': [], 'y': [], 'title': 'North Error'}
 
     import numpy as np, pandas as pd
-
     series_dict: Dict[str, List[float]] = {}
     time_arrays: List[List[Any]] = []
 
-    for track_id, df_track in tracks_df.groupby('track_id'):
-        df_track = df_track.sort_values('timestamp')
-        north_errors: List[float] = []
-        times: List[Any] = []
-        for _, track_row in df_track.iterrows():
-            try:
-                time_diffs = abs(truth_df['timestamp'] - track_row['timestamp'])
-                closest_idx = time_diffs.idxmin()
-                truth_row = truth_df.loc[closest_idx]
-                lat_error = (track_row['lat'] - truth_row['lat']) * 111000
-            except Exception:
-                continue
-            north_errors.append(lat_error)
-            times.append(track_row['timestamp'])
-        if north_errors and times:
-            series_dict[f"North Error {track_id}"] = north_errors
-            time_arrays.append(times)
+    # Precomputed errors fast-path
+    if 'precomputed_errors' in capabilities and getattr(focus_dfs, 'errors_df', None) is not None:
+        errors_df = getattr(focus_dfs, 'errors_df')
+        if errors_df is not None and not errors_df.empty:
+            track_col = get_col(schema, 'errors', 'track_id')
+            ts_col    = get_col(schema, 'errors', 'timestamp')
+            north_col = get_col(schema, 'errors', 'north_error')
+            if all(c in errors_df.columns for c in [track_col, ts_col, north_col]):
+                df = errors_df[errors_df[track_col].isin(selected_tracks)] if selected_tracks else errors_df
+                if not df.empty:
+                    try:
+                        for track_id, grp in df.groupby(track_col):
+                            grp_sorted = grp.sort_values(ts_col)
+                            errs = grp_sorted[north_col].dropna().astype(float).tolist()
+                            ts = pd.to_datetime(grp_sorted[ts_col])
+                            if errs and not ts.empty:
+                                series_dict[f"North Error {track_id}"] = errs
+                                time_arrays.append(ts.tolist())
+                    except Exception:
+                        series_dict = {}
+                        time_arrays = []
+        # If we populated series_dict, proceed to axis build; else fall back
+    if not series_dict:
+        tracks_df = getattr(focus_dfs, 'tracks_df', None)
+        truth_df  = getattr(focus_dfs, 'truth_df', None)
+        if tracks_df is None or truth_df is None or tracks_df.empty or truth_df.empty:
+            return {'x': [], 'y': [], 'title': 'North Error'}
+        t_id_col  = get_col(schema, 'tracks', 'track_id')
+        t_ts_col  = get_col(schema, 'tracks', 'timestamp')
+        t_lat_col = get_col(schema, 'tracks', 'lat')
+        tr_ts_col = get_col(schema, 'truth',  'timestamp')
+        tr_lat_col= get_col(schema, 'truth',  'lat')
+        if not all(c in tracks_df.columns for c in [t_id_col, t_ts_col, t_lat_col]) or not all(c in truth_df.columns for c in [tr_ts_col, tr_lat_col]):
+            return {'x': [], 'y': [], 'title': 'North Error'}
+        if selected_tracks and t_id_col in tracks_df.columns:
+            tracks_df = tracks_df[tracks_df[t_id_col].isin(selected_tracks)]
+            if tracks_df.empty:
+                return {'x': [], 'y': [], 'title': 'North Error'}
+        for track_id, df_track in tracks_df.groupby(t_id_col):
+            df_track = df_track.sort_values(t_ts_col)
+            north_errors: List[float] = []
+            times: List[Any] = []
+            for _, track_row in df_track.iterrows():
+                try:
+                    diffs = (truth_df[tr_ts_col] - track_row[t_ts_col]).abs()
+                    idx = diffs.idxmin()
+                    truth_row = truth_df.loc[idx]
+                    lat_error = (track_row[t_lat_col] - truth_row[tr_lat_col]) * 111000.0
+                except Exception:
+                    continue
+                north_errors.append(float(lat_error))
+                times.append(track_row[t_ts_col])
+            if north_errors and times:
+                series_dict[f"North Error {track_id}"] = north_errors
+                time_arrays.append(times)
 
     if not series_dict:
         return {'x': [], 'y': [], 'title': 'North Error'}
@@ -101,42 +133,70 @@ def north_error_over_time(app_state, widgets: Sequence[Any]) -> Dict[str, Any]:
 def east_error_over_time(app_state, widgets: Sequence[Any]) -> Dict[str, Any]:
     """Formatter for east (longitudinal) positional error vs time, per track (multi-series)."""
     focus_dfs = FS.get_focus_or_empty(app_state)
-    if not focus_dfs or focus_dfs.tracks_df is None or focus_dfs.truth_df is None:
+    if not focus_dfs:
         return {'x': [], 'y': [], 'title': 'East Error'}
-    tracks_df = focus_dfs.tracks_df
-    truth_df = focus_dfs.truth_df
-    if tracks_df.empty or truth_df.empty:
-        return {'x': [], 'y': [], 'title': 'East Error'}
-
+    schema = getattr(focus_dfs, 'schema', None)
+    capabilities = getattr(focus_dfs, 'capabilities', []) or []
     selected_tracks = FS.extract_selected_tracks(widgets)
     if selected_tracks is None or len(selected_tracks) == 0:
         return {'x': [], 'y': [], 'title': 'East Error'}
-    if 'track_id' in tracks_df.columns:
-        tracks_df = tracks_df[tracks_df['track_id'].isin(selected_tracks)]
-    if tracks_df.empty:
-        return {'x': [], 'y': [], 'title': 'East Error'}
-
     import numpy as np, pandas as pd
-
     series_dict: Dict[str, List[float]] = {}
     time_arrays: List[List[Any]] = []
-    for track_id, df_track in tracks_df.groupby('track_id'):
-        df_track = df_track.sort_values('timestamp')
-        east_errors: List[float] = []
-        times: List[Any] = []
-        for _, track_row in df_track.iterrows():
-            try:
-                time_diffs = abs(truth_df['timestamp'] - track_row['timestamp'])
-                closest_idx = time_diffs.idxmin()
-                truth_row = truth_df.loc[closest_idx]
-                east_error = (track_row['lon'] - truth_row['lon']) * 111000 * np.cos(np.radians(truth_row['lat']))
-            except Exception:
-                continue
-            east_errors.append(east_error)
-            times.append(track_row['timestamp'])
-        if east_errors and times:
-            series_dict[f"East Error {track_id}"] = east_errors
-            time_arrays.append(times)
+    if 'precomputed_errors' in capabilities and getattr(focus_dfs, 'errors_df', None) is not None:
+        errors_df = getattr(focus_dfs, 'errors_df')
+        track_col = get_col(schema, 'errors', 'track_id')
+        ts_col    = get_col(schema, 'errors', 'timestamp')
+        east_col  = get_col(schema, 'errors', 'east_error')
+        lat_col_truth = get_col(schema, 'truth', 'lat')  # needed for cosine if computing manually; not needed here
+        if errors_df is not None and not errors_df.empty and all(c in errors_df.columns for c in [track_col, ts_col, east_col]):
+            df = errors_df[errors_df[track_col].isin(selected_tracks)] if selected_tracks else errors_df
+            if not df.empty:
+                try:
+                    for track_id, grp in df.groupby(track_col):
+                        grp_sorted = grp.sort_values(ts_col)
+                        errs = grp_sorted[east_col].dropna().astype(float).tolist()
+                        ts = pd.to_datetime(grp_sorted[ts_col])
+                        if errs and not ts.empty:
+                            series_dict[f"East Error {track_id}"] = errs
+                            time_arrays.append(ts.tolist())
+                except Exception:
+                    series_dict = {}
+                    time_arrays = []
+    if not series_dict:
+        tracks_df = getattr(focus_dfs, 'tracks_df', None)
+        truth_df  = getattr(focus_dfs, 'truth_df', None)
+        if tracks_df is None or truth_df is None or tracks_df.empty or truth_df.empty:
+            return {'x': [], 'y': [], 'title': 'East Error'}
+        t_id_col  = get_col(schema, 'tracks', 'track_id')
+        t_ts_col  = get_col(schema, 'tracks', 'timestamp')
+        t_lon_col = get_col(schema, 'tracks', 'lon')
+        tr_ts_col = get_col(schema, 'truth',  'timestamp')
+        tr_lon_col= get_col(schema, 'truth',  'lon')
+        tr_lat_col= get_col(schema, 'truth',  'lat')
+        if not all(c in tracks_df.columns for c in [t_id_col, t_ts_col, t_lon_col]) or not all(c in truth_df.columns for c in [tr_ts_col, tr_lon_col, tr_lat_col]):
+            return {'x': [], 'y': [], 'title': 'East Error'}
+        if selected_tracks and t_id_col in tracks_df.columns:
+            tracks_df = tracks_df[tracks_df[t_id_col].isin(selected_tracks)]
+            if tracks_df.empty:
+                return {'x': [], 'y': [], 'title': 'East Error'}
+        for track_id, df_track in tracks_df.groupby(t_id_col):
+            df_track = df_track.sort_values(t_ts_col)
+            east_errors: List[float] = []
+            times: List[Any] = []
+            for _, track_row in df_track.iterrows():
+                try:
+                    diffs = (truth_df[tr_ts_col] - track_row[t_ts_col]).abs()
+                    idx = diffs.idxmin()
+                    truth_row = truth_df.loc[idx]
+                    east_error = (track_row[t_lon_col] - truth_row[tr_lon_col]) * 111000.0 * np.cos(np.radians(truth_row[tr_lat_col]))
+                except Exception:
+                    continue
+                east_errors.append(float(east_error))
+                times.append(track_row[t_ts_col])
+            if east_errors and times:
+                series_dict[f"East Error {track_id}"] = east_errors
+                time_arrays.append(times)
 
     if not series_dict:
         return {'x': [], 'y': [], 'title': 'East Error'}
@@ -169,12 +229,10 @@ def rms_error_3d_over_time(app_state, widgets: Sequence[Any]) -> Dict[str, Any]:
     Honors selected tracks; if multiple, each becomes its own line.
     """
     focus_dfs = FS.get_focus_or_empty(app_state)
-    if not focus_dfs or focus_dfs.tracks_df is None or focus_dfs.truth_df is None:
+    if not focus_dfs:
         return {'x': [], 'y': [], 'title': 'RMS 3D Error'}
-    tracks_df = focus_dfs.tracks_df
-    truth_df = focus_dfs.truth_df
-    if tracks_df.empty or truth_df.empty:
-        return {'x': [], 'y': [], 'title': 'RMS 3D Error'}
+    schema = getattr(focus_dfs, 'schema', None)
+    capabilities = getattr(focus_dfs, 'capabilities', []) or []
 
     # Track selection
     selected_tracks = None
@@ -188,44 +246,53 @@ def rms_error_3d_over_time(app_state, widgets: Sequence[Any]) -> Dict[str, Any]:
         except Exception:
             pass
 
-    if selected_tracks is not None:
-        # If empty selection explicitly, return empty plot
-        if len(selected_tracks) == 0:
-            return {'x': [], 'y': [], 'title': 'RMS 3D Error'}
-        if 'track_id' in tracks_df.columns:
-            tracks_df = tracks_df[tracks_df['track_id'].isin(selected_tracks)]
-    if tracks_df.empty:
-        return {'x': [], 'y': [], 'title': 'RMS 3D Error'}
-    
-
-    import numpy as np
-    import pandas as pd
-
+    import numpy as np, pandas as pd
     series_dict: Dict[str, List[float]] = {}
     time_arrays: List[List[Any]] = []
+    # Simplest path: compute from track + truth (even if precomputed errors exist) for altitude consistency
+    tracks_df = getattr(focus_dfs, 'tracks_df', None)
+    truth_df  = getattr(focus_dfs, 'truth_df', None)
+    if tracks_df is None or truth_df is None or tracks_df.empty or truth_df.empty:
+        return {'x': [], 'y': [], 'title': 'RMS 3D Error'}
+    t_id_col  = get_col(schema, 'tracks', 'track_id')
+    t_ts_col  = get_col(schema, 'tracks', 'timestamp')
+    t_lat_col = get_col(schema, 'tracks', 'lat')
+    t_lon_col = get_col(schema, 'tracks', 'lon')
+    t_alt_col = get_col(schema, 'tracks', 'alt')
+    tr_ts_col = get_col(schema, 'truth',  'timestamp')
+    tr_lat_col= get_col(schema, 'truth',  'lat')
+    tr_lon_col= get_col(schema, 'truth',  'lon')
+    tr_alt_col= get_col(schema, 'truth',  'alt')
+    if selected_tracks is not None:
+        if len(selected_tracks) == 0:
+            return {'x': [], 'y': [], 'title': 'RMS 3D Error'}
+        if t_id_col in tracks_df.columns:
+            tracks_df = tracks_df[tracks_df[t_id_col].isin(selected_tracks)]
+    if tracks_df.empty:
+        return {'x': [], 'y': [], 'title': 'RMS 3D Error'}
     try:
-        for track_id, df_track in tracks_df.groupby('track_id'):
-            df_track = df_track.sort_values('timestamp')
+        for track_id, df_track in tracks_df.groupby(t_id_col):
+            df_track = df_track.sort_values(t_ts_col)
             errs: List[float] = []
             times: List[Any] = []
             for _, track_row in df_track.iterrows():
                 try:
-                    time_diffs = abs(truth_df['timestamp'] - track_row['timestamp'])
-                    closest_idx = time_diffs.idxmin()
-                    truth_row = truth_df.loc[closest_idx]
-                    lat_error = (track_row['lat'] - truth_row['lat']) * 111000
-                    lon_error = (track_row['lon'] - truth_row['lon']) * 111000 * np.cos(np.radians(truth_row['lat']))
+                    diffs = (truth_df[tr_ts_col] - track_row[t_ts_col]).abs()
+                    idx = diffs.idxmin()
+                    truth_row = truth_df.loc[idx]
+                    lat_error = (track_row[t_lat_col] - truth_row[tr_lat_col]) * 111000.0
+                    lon_error = (track_row[t_lon_col] - truth_row[tr_lon_col]) * 111000.0 * np.cos(np.radians(truth_row[tr_lat_col]))
                     alt_error = 0.0
-                    if 'alt' in track_row and 'alt' in truth_row:
+                    if t_alt_col in track_row and tr_alt_col in truth_row:
                         try:
-                            alt_error = (track_row['alt'] - truth_row['alt'])
+                            alt_error = (track_row[t_alt_col] - truth_row[tr_alt_col])
                         except Exception:
                             alt_error = 0.0
-                    err_mag = np.sqrt(lat_error**2 + lon_error**2 + alt_error**2)
+                    err_mag = float(np.sqrt(lat_error**2 + lon_error**2 + alt_error**2))
                 except Exception:
                     continue
                 errs.append(err_mag)
-                times.append(track_row['timestamp'])
+                times.append(track_row[t_ts_col])
             if errs and times:
                 series_dict[f"RMS 3D Error {track_id}"] = errs
                 time_arrays.append(times)
@@ -264,12 +331,15 @@ at Y = track_index (or track_id label) spanning from first to last timestamp.
 
 @register_formatter('track_existence_over_time')
 def track_existence_over_time(app_state, widgets: Sequence[Any]) -> Dict[str, Any]:
-    focus = app_state.get_focus_dataset_info()
-    if not focus or focus.status.value != "loaded":
+    focus_dfs = FS.get_focus_or_empty(app_state)
+    if not focus_dfs or getattr(focus_dfs, 'tracks_df', None) is None:
         return {"x": [], "y": [], "title": "Track Lifetimes"}
-    tracks_df = getattr(focus, 'tracks_df', None)
+    tracks_df = focus_dfs.tracks_df
     if tracks_df is None or tracks_df.empty:
         return {"x": [], "y": [], "title": "Track Lifetimes"}
+    schema = getattr(focus_dfs, 'schema', None)
+    t_id_col = get_col(schema, 'tracks', 'track_id')
+    t_ts_col = get_col(schema, 'tracks', 'timestamp')
 
     # Track selection
     selected_tracks = None
@@ -284,20 +354,25 @@ def track_existence_over_time(app_state, widgets: Sequence[Any]) -> Dict[str, An
             pass
 
     df = tracks_df
-    if selected_tracks is not None and len(selected_tracks) > 0:
-        df = df[df['track_id'].isin(selected_tracks)]
+    if selected_tracks is not None and len(selected_tracks) > 0 and t_id_col in df.columns:
+        df = df[df[t_id_col].isin(selected_tracks)]
     if df.empty:
         return {"x": [], "y": [], "title": "Track Lifetimes"}
 
     # Group by track and compute start/end
     import pandas as pd
-    df = df.sort_values('timestamp')
+    if t_ts_col in df.columns:
+        df = df.sort_values(t_ts_col)
     series_dict: Dict[str, List[float]] = {}
     starts = []
     ends = []
     labels = []  # original track_id labels (could be non-numeric)
-    for idx, (track_id, grp) in enumerate(df.groupby('track_id')):
-        ts = pd.to_datetime(grp['timestamp'])
+    if t_id_col not in df.columns:
+        return {"x": [], "y": [], "title": "Track Lifetimes"}
+    for idx, (track_id, grp) in enumerate(df.groupby(t_id_col)):
+        if t_ts_col not in grp.columns:
+            continue
+        ts = pd.to_datetime(grp[t_ts_col])
         start = ts.min()
         end = ts.max()
         # Represent as two-point line; XYPlot expects full x list for each series
