@@ -42,13 +42,15 @@ class HistogramPlotTabWidget(PlotTabWidget):
             self.data_selection_widget.pack(fill='x', padx=5, pady=5)
             self.data_selection_widget.set_tracks_callback(lambda _: self.request_update())
             self.data_selection_widget.set_truth_callback(lambda _: self.request_update())
+        # Create a horizontal row for track selection + histogram controls side by side
+        row_frame = tk.Frame(self.control_frame)
+        row_frame.pack(fill='x', padx=5, pady=5)
         if self.include_track_selection:
-            self.track_selection_widget = TrackSelectionWidget(self.control_frame, collapsed=True)
-            self.track_selection_widget.pack(fill='x', padx=5, pady=5)
+            self.track_selection_widget = TrackSelectionWidget(row_frame, collapsed=True)
+            self.track_selection_widget.pack(side='left', fill='both', expand=True, padx=(0,5))
             self.track_selection_widget.set_selection_callback(lambda _: self.request_update())
-        # Histogram specific controls
-        self.hist_control_widget = HistogramControlWidget(self.control_frame, collapsed=True, scatter_variables=['lat','lon','speed'])
-        self.hist_control_widget.pack(fill='x', padx=5, pady=5)
+        self.hist_control_widget = HistogramControlWidget(row_frame, collapsed=True, scatter_variables=['lat','lon','speed'])
+        self.hist_control_widget.pack(side='left', fill='both', expand=True)
         self.hist_control_widget.set_change_callback(lambda: self.request_update())
         # Placeholder for custom controls hook
         try:

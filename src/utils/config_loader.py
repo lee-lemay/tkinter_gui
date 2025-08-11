@@ -13,7 +13,8 @@ except Exception:  # pragma: no cover - runtime import error handled by caller
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "ForceUpdate": False,
-    "MetricMethod": "Haversine",
+    "Metric": "Haversine (m)",
+    "Method": "Bipartite",
     "DistanceThreshold": 1000,
     "DatasetDirectory": None,
     "RecentDirectories": [],

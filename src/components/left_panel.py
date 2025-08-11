@@ -62,11 +62,7 @@ class LeftPanel:
         # Separator
         ttk.Separator(self.frame, orient="horizontal").pack(fill="x", padx=10, pady=10)
 
-        # Current Dataset Focus Section
-        self._create_focus_section()
 
-        # Separator
-        ttk.Separator(self.frame, orient="horizontal").pack(fill="x", padx=10, pady=10)
 
         # Per-dataset Config (read-only)
         self._create_dataset_config_view_section()
@@ -152,55 +148,7 @@ class LeftPanel:
         # Pack on the right after Process so it appears to the left of it
         self.clear_btn.pack(side="right", padx=(0, 5))
     
-    def _create_focus_section(self):
-        """Create the current dataset focus section."""
-        # Section header
-        focus_frame = ttk.LabelFrame(self.frame, text="Focus Dataset", padding=5)
-        focus_frame.pack(fill="x", padx=10, pady=5)
-        
-        # Dataset info display
-        info_frame = ttk.Frame(focus_frame)
-        info_frame.pack(fill="x")
-        
-        # Name
-        ttk.Label(info_frame, text="Name:").grid(row=0, column=0, sticky="w", pady=1)
-        self.focus_name_var = tk.StringVar(value="None")
-        ttk.Label(info_frame, textvariable=self.focus_name_var, font=("TkDefaultFont", 9)).grid(
-            row=0, column=1, sticky="w", padx=(5, 0), pady=1
-        )
-        
-        # Date and Duration
-        ttk.Label(info_frame, text="Date:").grid(row=1, column=0, sticky="w", pady=1)
-        self.focus_date_var = tk.StringVar(value="-")
-        ttk.Label(info_frame, textvariable=self.focus_date_var, font=("TkDefaultFont", 9)).grid(
-            row=1, column=1, sticky="w", padx=(5, 0), pady=1
-        )
-        
-        # Counts
-        ttk.Label(info_frame, text="Tracks:").grid(row=2, column=0, sticky="w", pady=1)
-        self.focus_tracks_var = tk.StringVar(value="-")
-        ttk.Label(info_frame, textvariable=self.focus_tracks_var, font=("TkDefaultFont", 9)).grid(
-            row=2, column=1, sticky="w", padx=(5, 0), pady=1
-        )
-        
-        ttk.Label(info_frame, text="Detections:").grid(row=3, column=0, sticky="w", pady=1)
-        self.focus_detections_var = tk.StringVar(value="-")
-        ttk.Label(info_frame, textvariable=self.focus_detections_var, font=("TkDefaultFont", 9)).grid(
-            row=3, column=1, sticky="w", padx=(5, 0), pady=1
-        )
-        
-        ttk.Label(info_frame, text="Truth:").grid(row=4, column=0, sticky="w", pady=1)
-        self.focus_truth_var = tk.StringVar(value="-")
-        ttk.Label(info_frame, textvariable=self.focus_truth_var, font=("TkDefaultFont", 9)).grid(
-            row=4, column=1, sticky="w", padx=(5, 0), pady=1
-        )
-        
-        # Configure grid weights
-        info_frame.grid_columnconfigure(1, weight=1)
-        
-        # Processing controls (placeholder for future phases)
-        controls_frame = ttk.Frame(focus_frame)
-        controls_frame.pack(fill="x", pady=(10, 0))
+    # _create_focus_section removed
 
     def _create_config_section(self):
         """Create configuration editor section at the bottom."""
@@ -218,20 +166,35 @@ class LeftPanel:
             command=self._on_config_force_changed,
         ).pack(anchor="w")
 
-        # Metric method (dropdown)
+        # Metric (dropdown)
         metric_row = ttk.Frame(cfg_frame)
         metric_row.pack(fill="x", pady=2)
-        ttk.Label(metric_row, text="Metric Method:").pack(side="left")
-        self.metric_var = tk.StringVar(value="Haversine")
+        ttk.Label(metric_row, text="Metric:").pack(side="left")
+        self.metric_var = tk.StringVar(value="Haversine (m)")
         self.metric_combo = ttk.Combobox(
             metric_row,
             textvariable=self.metric_var,
             state="readonly",
             width=18,
-            values=("Haversine",),
+            values=("Haversine (m)",),
         )
         self.metric_combo.pack(side="left", padx=(5, 0))
-        self.metric_combo.bind("<<ComboboxSelected>>", lambda e: self._on_config_metric_save())
+        self.metric_combo.bind("<<ComboboxSelected>>", lambda e: self._on_config_metric_changed())
+
+        # Method (dropdown)
+        method_row = ttk.Frame(cfg_frame)
+        method_row.pack(fill="x", pady=2)
+        ttk.Label(method_row, text="Method:").pack(side="left")
+        self.method_var = tk.StringVar(value="Bipartite")
+        self.method_combo = ttk.Combobox(
+            method_row,
+            textvariable=self.method_var,
+            state="readonly",
+            width=18,
+            values=("Bipartite",),
+        )
+        self.method_combo.pack(side="left", padx=(5, 0))
+        self.method_combo.bind("<<ComboboxSelected>>", lambda e: self._on_config_method_changed())
 
         # Distance threshold (updates on focus-out)
         dist_row = ttk.Frame(cfg_frame)
@@ -259,14 +222,14 @@ class LeftPanel:
         grid.pack(fill="x")
 
         # Labels and corresponding variables
-        self.ds_cfg_force_var = tk.StringVar(value="-")
         self.ds_cfg_metric_var = tk.StringVar(value="-")
+        self.ds_cfg_method_var = tk.StringVar(value="-")
         self.ds_cfg_dist_var = tk.StringVar(value="-")
         self.ds_cfg_dir_var = tk.StringVar(value="-")
 
         rows = [
-            ("Force Update:", self.ds_cfg_force_var),
-            ("Metric Method:", self.ds_cfg_metric_var),
+            ("Metric:", self.ds_cfg_metric_var),
+            ("Method:", self.ds_cfg_method_var),
             ("Distance Threshold:", self.ds_cfg_dist_var),
             ("Dataset Directory:", self.ds_cfg_dir_var),
         ]
@@ -285,20 +248,22 @@ class LeftPanel:
             state = self.controller.get_state()
             focus_info = state.get_focus_dataset_info()
             if not focus_info:
-                self.ds_cfg_force_var.set("-")
                 self.ds_cfg_metric_var.set("-")
+                self.ds_cfg_method_var.set("-")
                 self.ds_cfg_dist_var.set("-")
                 self.ds_cfg_dir_var.set("-")
                 return
             cfg = state.get_dataset_config(focus_info.name)
             if not cfg:
-                self.ds_cfg_force_var.set("-")
                 self.ds_cfg_metric_var.set("-")
+                self.ds_cfg_method_var.set("-")
                 self.ds_cfg_dist_var.set("-")
                 self.ds_cfg_dir_var.set("-")
                 return
-            self.ds_cfg_force_var.set(str(cfg.get("ForceUpdate", "-")))
-            self.ds_cfg_metric_var.set(str(cfg.get("MetricMethod", "-")))
+            metric_val = cfg.get("Metric", "-")
+            method_val = cfg.get("Method", "-")
+            self.ds_cfg_metric_var.set(str(metric_val))
+            self.ds_cfg_method_var.set(str(method_val))
             # show as int if whole number, else float
             dt = cfg.get("DistanceThreshold")
             if isinstance(dt, (int, float)):
@@ -365,13 +330,27 @@ class LeftPanel:
         state = self.controller.get_state()
         state.force_update = self.force_var.get()
 
-    def _on_config_metric_save(self):
+    def _on_config_metric_changed(self):
         if not self.controller:
             return
         state = self.controller.get_state()
         value = (self.metric_var.get() or "").strip()
         if value:
-            state.metric_method = value
+            try:
+                state.metric = value
+            except Exception as e:
+                self.logger.warning(f"Failed to set metric: {e}")
+
+    def _on_config_method_changed(self):
+        if not self.controller:
+            return
+        state = self.controller.get_state()
+        value = (self.method_var.get() or "").strip()
+        if value:
+            try:
+                state.method = value
+            except Exception as e:
+                self.logger.warning(f"Failed to set method: {e}")
 
     def _on_config_distance_blur(self, event):
         """Update distance threshold when entry loses focus, if changed and valid."""
@@ -489,50 +468,7 @@ class LeftPanel:
                 values=(loaded_status, date_str, size_mb_str, pkl_status, truth_str, detections_str, tracks_str)
             )
     
-    def _update_focus_info(self, dataset_info):
-        """Update the focus dataset information display."""
-        if dataset_info:
-            self.focus_name_var.set(dataset_info.name)
-            self.focus_date_var.set(dataset_info.last_modified or "-")
-            
-            # Show actual counts if dataset is loaded
-            if dataset_info.status.value == "loaded":
-                # Calculate actual counts from loaded DataFrames
-                tracks_count = 0
-                detections_count = 0
-                truth_count = 0
-                
-                if dataset_info.tracks_df is not None and not dataset_info.tracks_df.empty:
-                    # Count unique track IDs
-                    if 'track_id' in dataset_info.tracks_df.columns:
-                        tracks_count = len(dataset_info.tracks_df['track_id'].unique())
-                    else:
-                        tracks_count = len(dataset_info.tracks_df)
-                
-                if dataset_info.detections_df is not None and not dataset_info.detections_df.empty:
-                    detections_count = len(dataset_info.detections_df)
-                
-                if dataset_info.truth_df is not None and not dataset_info.truth_df.empty:
-                    truth_count = len(dataset_info.truth_df)
-                
-                self.focus_tracks_var.set(str(tracks_count))
-                self.focus_detections_var.set(str(detections_count))
-                self.focus_truth_var.set(str(truth_count))
-            else:
-                # Show availability indicators if not loaded
-                tracks_status = "✓" if dataset_info.has_tracks else "✗"
-                detections_status = "✓" if dataset_info.has_detections else "✗"
-                truth_status = "✓" if dataset_info.has_truth else "✗"
-                
-                self.focus_tracks_var.set(tracks_status)
-                self.focus_detections_var.set(detections_status)
-                self.focus_truth_var.set(truth_status)
-        else:
-            self.focus_name_var.set("None")
-            self.focus_date_var.set("-")
-            self.focus_tracks_var.set("-")
-            self.focus_detections_var.set("-")
-            self.focus_truth_var.set("-")
+    # _update_focus_info removed
     
     # State Management
     def on_state_changed(self, event: str):
@@ -557,16 +493,21 @@ class LeftPanel:
                 self.process_btn.configure(state="normal" if has_datasets else "disabled")
             
             elif event == "focus_changed":
-                focus_info = state.get_focus_dataset_info()
-                self._update_focus_info(focus_info)
-                
                 # Update dataset config view
                 self._sync_dataset_config_view()
             elif event in ("controller_changed", "config_changed", "dataset_directory_changed"):
                 # Populate config UI from model
                 try:
                     self.force_var.set(bool(state.force_update))
-                    self.metric_var.set(state.metric_method or "")
+                    # Populate new split fields (fallback to legacy if needed)
+                    try:
+                        self.metric_var.set(getattr(state, 'metric', None) or state.metric_method or "")
+                    except Exception:
+                        self.metric_var.set(state.metric_method or "")
+                    try:
+                        self.method_var.set(getattr(state, 'method', None) or "")
+                    except Exception:
+                        self.method_var.set("")
                     self.dist_var.set(str(state.distance_threshold))
                     self.ds_dir_var.set(str(state.dataset_directory) if state.dataset_directory else "-")
                 except Exception as e:

@@ -719,13 +719,25 @@ class MatplotlibBackend(PlotBackend):
         ax.set_ylim(0, global_ymax * 1.15 if global_ymax else 1)
         ax.grid(True, axis='y', alpha=0.3)
         try:
-            ax.legend(loc='upper left')
+            # Place primary legend in upper right to avoid overlapping stats box (upper left)
+            ax.legend(loc='upper right')
         except Exception:
             pass
         # Primary stats box (from first histogram if present)
         first = histograms[0]
         try:
-            ax.text(0.02, 0.95, f"μ={first.get('mean',0):.2f}\nσ={first.get('std',1):.2f}", transform=ax.transAxes, va='top', ha='left', fontsize=10,
+            # Compute datapoint count for first histogram (fallback to length of values)
+            n_values = first.get('count')
+            if n_values is None:
+                try:
+                    vals = first.get('values') or []
+                    n_values = len(vals)
+                except Exception:
+                    n_values = 0
+            stats_text = (f"μ={first.get('mean',0):.2f}\n"
+                          f"σ={first.get('std',1):.2f}\n"
+                          f"N={n_values}")
+            ax.text(0.02, 0.95, stats_text, transform=ax.transAxes, va='top', ha='left', fontsize=10,
                     bbox=dict(boxstyle='round', facecolor='white', alpha=0.7, edgecolor='gray'))
         except Exception:
             pass

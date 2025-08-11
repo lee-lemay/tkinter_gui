@@ -87,12 +87,12 @@ class ApplicationState:
         self._config_path: Path = (Path(__file__).resolve().parents[2] / "config.yaml")
 
         # Application configuration (loaded at startup)
-        # ForceUpdate: whether to re-scan/reload datasets forcefully
-        # MetricMethod: error metric method name (e.g., 'Haversine')
-        # DistanceThreshold: numeric threshold in meters
-        self._force_update: bool = False
-        self._metric_method: str = "Haversine"
-        self._distance_threshold: float = 1000.0
+        # ForceUpdate: whether to reprocess datasets even if .pkl files exist
+        # Metric, Method; DistanceThreshold in meters
+        self._force_update = False
+        self._metric = "Haversine (m)"
+        self._method = "Bipartite"
+        self._distance_threshold = 1000.0
 
         # Load configuration (includes recent directories)
         self._load_configuration()
@@ -126,23 +126,39 @@ class ApplicationState:
             self._notify_observers("config_changed")
 
     @property
-    def metric_method(self) -> str:
-        return self._metric_method
+    def distance_threshold(self) -> float:
+        return self._distance_threshold
 
-    @metric_method.setter
-    def metric_method(self, value: str):
-        if value and value != self._metric_method:
-            self._metric_method = str(value)
-            self.logger.debug(f"Config changed: metric_method={self._metric_method}")
+    # New separate properties
+    @property
+    def metric(self) -> str:
+        return self._metric
+
+    @metric.setter
+    def metric(self, value: str):
+        if value and value != self._metric:
+            self._metric = str(value)
+            self.logger.debug(f"Config changed: metric={self._metric}")
             try:
-                self._config_loader.save(self._config_path, {"MetricMethod": self._metric_method})
+                self._config_loader.save(self._config_path, {"Metric": self._metric})
             except Exception as e:
-                self.logger.warning(f"Failed to persist MetricMethod: {e}")
+                self.logger.warning(f"Failed to persist Metric: {e}")
             self._notify_observers("config_changed")
 
     @property
-    def distance_threshold(self) -> float:
-        return self._distance_threshold
+    def method(self) -> str:
+        return self._method
+
+    @method.setter
+    def method(self, value: str):
+        if value and value != self._method:
+            self._method = str(value)
+            self.logger.debug(f"Config changed: method={self._method}")
+            try:
+                self._config_loader.save(self._config_path, {"Method": self._method})
+            except Exception as e:
+                self.logger.warning(f"Failed to persist Method: {e}")
+            self._notify_observers("config_changed")
 
     @distance_threshold.setter
     def distance_threshold(self, value: float):
@@ -399,7 +415,8 @@ class ApplicationState:
             if dataset_name not in self._dataset_configs:
                 cfg = {
                     "ForceUpdate": bool(self._force_update),
-                    "MetricMethod": str(self._metric_method),
+                    "Metric": str(self._metric),
+                    "Method": str(self._method),
                     "DistanceThreshold": float(self._distance_threshold),
                     "DatasetDirectory": str(self._dataset_directory) if self._dataset_directory else None,
                 }
@@ -532,8 +549,10 @@ class ApplicationState:
             cfg = self._config_loader.load(self._config_path)
             # Config values
             self._force_update = bool(cfg.get("ForceUpdate", False))
-            if isinstance(cfg.get("MetricMethod"), str) and cfg.get("MetricMethod"):
-                self._metric_method = str(cfg["MetricMethod"])
+            if isinstance(cfg.get("Metric"), str) and cfg.get("Metric"):
+                self._metric = str(cfg["Metric"])
+            if isinstance(cfg.get("Method"), str) and cfg.get("Method"):
+                self._method = str(cfg["Method"])
             try:
                 dt_val = cfg.get("DistanceThreshold")
                 if dt_val is not None:

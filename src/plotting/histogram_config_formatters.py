@@ -106,7 +106,9 @@ def _build_error_histogram(app_state, widgets: Sequence[Any], component: str, ti
             scatter_var = hist_ctrl.get_scatter_variable()
         except Exception:
             pass
-    if bins_requested % 2 == 0:
+    if bins_requested < 1:
+        bins_requested = 41
+    if bins_requested % 2 == 0:  # ensure odd
         bins_requested += 1
     left = mean - extent_sigma*std
     right = mean + extent_sigma*std

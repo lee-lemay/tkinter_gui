@@ -66,8 +66,9 @@ class RightPanel:
         if hasattr(self, 'tab_widgets'):
             for tab_name, tab_widget in self.tab_widgets.items():
                 tab_widget.set_controller(controller)
-                if hasattr(self, 'plot_manager'):
-                    tab_widget.set_plot_manager(self.plot_manager)
+                if hasattr(tab_widget, 'set_plot_manager'):
+                    if hasattr(self, 'plot_manager'):
+                        tab_widget.set_plot_manager(self.plot_manager)
         
         self.logger.debug("Controller set for right panel")
     
@@ -112,19 +113,13 @@ class RightPanel:
             self._create_histogram_tabs()
     
     def _create_overview_tab(self):
-        """Create the overview tab using modular widget architecture."""
-        # Create backend for this tab
-        overview_backend = MatplotlibBackend()
-        
-        # Create the overview tab widget
-        self.overview_tab = OverviewTabWidget(self.notebook, overview_backend)
+        """Create the overview tab"""
+        self.overview_tab = OverviewTabWidget(self.notebook)
         self.notebook.add(self.overview_tab, text="Overview")
         
         # Set dependencies
         if hasattr(self, 'controller'):
             self.overview_tab.set_controller(self.controller)
-        if hasattr(self, 'plot_manager'):
-            self.overview_tab.set_plot_manager(self.plot_manager)
         
         # Store reference in the tab widgets dict
         if not hasattr(self, 'tab_widgets'):

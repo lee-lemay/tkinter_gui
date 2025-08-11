@@ -1135,7 +1135,7 @@ class HistogramControlWidget(CollapsibleWidget):
         self._scatter_variables = scatter_variables or []
         # Tk variables
         self.gaussian_var = tk.BooleanVar(value=False)
-        self.bin_count_var = tk.IntVar(value=7)  # default odd number (center + 3 each side)
+        self.bin_count_var = tk.IntVar(value=41) 
         self.sigma_extent_var = tk.DoubleVar(value=4.0)  # default ±4σ
         self.scatter_enabled_var = tk.BooleanVar(value=False)
         self.scatter_var_choice = tk.StringVar(value=self._scatter_variables[0] if self._scatter_variables else "")
@@ -1148,40 +1148,48 @@ class HistogramControlWidget(CollapsibleWidget):
     def _create_controls(self):  # type: ignore[override]
         frame = self.content_frame
 
-        # Gaussian overlay toggle
-        gauss_chk = ttk.Checkbutton(frame, text="Gaussian Overlay", variable=self.gaussian_var, command=self._notify_change)
-        gauss_chk.pack(anchor='w', padx=5, pady=2)
+        # Row 1: Gaussian | Bins (odd) | Extent (±σ)
+        row1 = ttk.Frame(frame)
+        row1.pack(fill='x', padx=5, pady=2)
 
-        # Bin count (odd only)
-        bins_row = ttk.Frame(frame)
-        bins_row.pack(fill='x', padx=5, pady=2)
-        ttk.Label(bins_row, text="Bins (odd):").pack(side='left')
-        self.bins_spin = ttk.Spinbox(bins_row, from_=3, to=101, increment=2, textvariable=self.bin_count_var, width=6, command=self._on_bins_changed)
-        self.bins_spin.pack(side='left', padx=4)
+        gauss_chk = ttk.Checkbutton(row1, text="Gaussian Overlay", variable=self.gaussian_var, command=self._notify_change)
+        gauss_chk.pack(side='left')
 
-        # Sigma extent
-        extent_row = ttk.Frame(frame)
-        extent_row.pack(fill='x', padx=5, pady=2)
-        ttk.Label(extent_row, text="Extent (±σ):").pack(side='left')
-        self.extent_spin = ttk.Spinbox(extent_row, from_=1.0, to=8.0, increment=0.5, textvariable=self.sigma_extent_var, width=6, command=self._notify_change)
-        self.extent_spin.pack(side='left', padx=4)
+        # vertical separator helper
+        def _vsep(parent):
+            sep = ttk.Separator(parent, orient='vertical')
+            sep.pack(side='left', fill='y', padx=6, pady=2)
+            return sep
 
-        # Scatter overlay controls
+        _vsep(row1)
+        ttk.Label(row1, text="# Bins (odd):").pack(side='left')
+        self.bins_spin = ttk.Spinbox(row1, from_=3, to=101, increment=2, textvariable=self.bin_count_var, width=6, command=self._on_bins_changed)
+        self.bins_spin.pack(side='left', padx=(4, 2))
+
+        _vsep(row1)
+        ttk.Label(row1, text="Plot Extent (±σ):").pack(side='left')
+        self.extent_spin = ttk.Spinbox(row1, from_=1.0, to=8.0, increment=0.5, textvariable=self.sigma_extent_var, width=6, command=self._notify_change)
+        self.extent_spin.pack(side='left', padx=(4, 2))
+
+        # Row 2: Scatter overlay + variable (only if variables provided)
         if self._scatter_variables:
-            scatter_row1 = ttk.Frame(frame)
-            scatter_row1.pack(fill='x', padx=5, pady=(4,2))
-            scatter_chk = ttk.Checkbutton(scatter_row1, text="Scatter Overlay", variable=self.scatter_enabled_var, command=self._notify_change)
+            scatter_row = ttk.Frame(frame)
+            scatter_row.pack(fill='x', padx=5, pady=(4, 2))
+
+            scatter_chk = ttk.Checkbutton(scatter_row, text="Scatter Overlay", variable=self.scatter_enabled_var, command=self._notify_change)
             scatter_chk.pack(side='left')
 
-            scatter_row2 = ttk.Frame(frame)
-            scatter_row2.pack(fill='x', padx=20, pady=2)
-            ttk.Label(scatter_row2, text="Variable:").pack(side='left')
-            self.scatter_combo = ttk.Combobox(scatter_row2, state='readonly', values=self._scatter_variables, textvariable=self.scatter_var_choice, width=14)
+            ttk.Label(scatter_row, text="Variable:").pack(side='left', padx=(12, 2))
+            self.scatter_combo = ttk.Combobox(scatter_row, state='readonly', values=self._scatter_variables, textvariable=self.scatter_var_choice, width=16)
             self.scatter_combo.pack(side='left', padx=4)
             self.scatter_combo.bind('<<ComboboxSelected>>', lambda _e: self._notify_change())
 
-        # Variable traces to enforce odd bins
-        self.bin_count_var.trace_add('write', lambda *_: self._ensure_odd_bins())
+        # Traces & event bindings so manual typing triggers updates
+        # Commit events (Return key or leaving focus)
+        self.bins_spin.bind('<Return>', lambda e: self._on_bins_commit())
+        self.bins_spin.bind('<FocusOut>', lambda e: self._on_bins_commit())
+        self.extent_spin.bind('<Return>', lambda e: self._on_extent_commit())
+        self.extent_spin.bind('<FocusOut>', lambda e: self._on_extent_commit())
 
     # Internal helpers
     def _ensure_odd_bins(self):
@@ -1191,6 +1199,19 @@ class HistogramControlWidget(CollapsibleWidget):
                 self.bin_count_var.set(v + 1)
         except Exception:
             pass
+
+    # Trace callbacks
+    def _on_extent_var_typed(self):
+        # Just propagate change; value already in self.sigma_extent_var
+        self._notify_change()
+
+    # Commit handlers (redundant safety for platforms where trace timing differs)
+    def _on_bins_commit(self):
+        self._ensure_odd_bins()
+        self._notify_change()
+
+    def _on_extent_commit(self):
+        self._notify_change()
 
     def _on_bins_changed(self):
         self._ensure_odd_bins()
