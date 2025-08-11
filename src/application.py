@@ -16,7 +16,7 @@ from .controllers.application_controller import ApplicationController
 from .utils.config_loader import ConfigLoader
 
 
-class DataAnalysisApp:
+class TrackViewApp:
     """
     Main application class that orchestrates the entire application.
     
@@ -29,7 +29,7 @@ class DataAnalysisApp:
     def __init__(self):
         """Initialize the application."""
         self.logger = logging.getLogger(__name__)
-        self.logger.info("Initializing Data Analysis Application")
+        self.logger.info("Initializing TrackView Application")
         
         # Initialize the main tkinter root
         self.root: Optional[tk.Tk] = None
@@ -74,7 +74,7 @@ class DataAnalysisApp:
             raise
     
     def _load_startup_configuration(self):
-        """Load config.yaml and apply values into the model. Auto-load datasets if set."""
+        """Load config.yaml and apply values into the model. Auto-populate datasets if directory set."""
         try:
             # Ensure model is available for type checkers and at runtime
             assert self.model is not None
@@ -105,7 +105,7 @@ class DataAnalysisApp:
             self.logger.info("Starting application main loop")
             
             # Configure the main window
-            self.root.title("Data Analysis Application")
+            self.root.title("TrackView")
             self.root.geometry("1200x800")
             self.root.minsize(800, 600)
 

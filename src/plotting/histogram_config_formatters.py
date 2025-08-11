@@ -92,28 +92,32 @@ def _build_error_histogram(app_state, widgets: Sequence[Any], component: str, ti
         if w.__class__.__name__ == 'HistogramControlWidget':
             hist_ctrl = w
             break
-    extent_sigma = 4.0
-    bins_requested = 7
-    gaussian_overlay = False
-    scatter_var = None
-    scatter_enabled = False
+    extent_sigma              = 4.0
+    bins_requested            = 7
+    gaussian_overlay          = False
+    unit_gaussian_overlay     = False
+    best_fit_gaussian_overlay = False
+    scatter_var               = None
+    scatter_enabled           = False
     if hist_ctrl:
         try:
-            extent_sigma = max(1.0, min(8.0, hist_ctrl.get_sigma_extent()))
-            bins_requested = hist_ctrl.get_bin_count()
-            gaussian_overlay = hist_ctrl.gaussian_overlay_enabled()
-            scatter_enabled = hist_ctrl.scatter_overlay_enabled()
-            scatter_var = hist_ctrl.get_scatter_variable()
+            extent_sigma              = max(1.0, min(8.0, hist_ctrl.get_sigma_extent()))
+            bins_requested            = hist_ctrl.get_bin_count()
+            gaussian_overlay          = hist_ctrl.gaussian_overlay_enabled()
+            unit_gaussian_overlay     = hist_ctrl.unit_gaussian_enabled()
+            best_fit_gaussian_overlay = hist_ctrl.best_fit_gaussian_enabled()
+            scatter_enabled           = hist_ctrl.scatter_overlay_enabled()
+            scatter_var               = hist_ctrl.get_scatter_variable()
         except Exception:
             pass
     if bins_requested < 1:
         bins_requested = 41
     if bins_requested % 2 == 0:  # ensure odd
         bins_requested += 1
-    left = mean - extent_sigma*std
-    right = mean + extent_sigma*std
+    left      = mean - extent_sigma*std
+    right     = mean + extent_sigma*std
     edges_arr = np.linspace(left, right, bins_requested + 1)
-    edges = edges_arr.tolist()
+    edges     = edges_arr.tolist()
 
     hist = {
         'values': arr.tolist(),
@@ -124,16 +128,38 @@ def _build_error_histogram(app_state, widgets: Sequence[Any], component: str, ti
     }
 
     overlays: List[Dict[str, Any]] = []
-    # Gaussian overlay
+    # Gaussian overlays
     if gaussian_overlay:
         try:
             xs = np.linspace(left, right, 200)
             bin_width = (right - left) / bins_requested if bins_requested else 1
             pdf = (1.0 / (std * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((xs - mean) / std) ** 2)
-            scaled = pdf * len(arr) * bin_width
-            overlays.append({'x': xs.tolist(), 'y': scaled.tolist(), 'style': {'type': 'line', 'color': 'black', 'label': 'Gaussian'}})
+            scale_factor = len(arr) * bin_width
+            scaled = pdf * scale_factor
+            overlays.append({'x': xs.tolist(), 'y': scaled.tolist(), 'style': {'type': 'line', 'color': 'black', 'label': f'Unit Gaussian scaled by {scale_factor:.0f}'}})
         except Exception:
             pass
+        
+    if unit_gaussian_overlay:
+        try:
+            xs = np.linspace(left, right, 200)
+            bin_width = (right - left) / bins_requested if bins_requested else 1
+            pdf = (1.0 / (std * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((xs - mean) / std) ** 2)
+            scaled = pdf
+            overlays.append({'x': xs.tolist(), 'y': scaled.tolist(), 'style': {'type': 'line', 'color': 'black', 'label': 'Unit Gaussian'}})
+        except Exception:
+            pass
+        
+    if best_fit_gaussian_overlay:
+        try:
+            xs = np.linspace(left, right, 200)
+            bin_width = (right - left) / bins_requested if bins_requested else 1
+            pdf = (1.0 / (std * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((xs - mean) / std) ** 2)
+            scaled = pdf
+            overlays.append({'x': xs.tolist(), 'y': scaled.tolist(), 'style': {'type': 'line', 'color': 'black', 'label': 'Best Fit Gaussian'}})
+        except Exception:
+            pass
+      
 
     # Secondary scatter overlay (bin-averaged scatter variable)
     if scatter_enabled and scatter_var:

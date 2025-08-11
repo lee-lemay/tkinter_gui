@@ -133,7 +133,7 @@ class RightPanel:
         
         # Create the statistics tab widget
         self.statistics_tab = StatisticsTabWidget(self.notebook, stats_backend)
-        self.notebook.add(self.statistics_tab, text="Statistics")
+        self.notebook.add(self.statistics_tab, text="# Tracks")
         
         # Set dependencies
         if hasattr(self, 'controller'):

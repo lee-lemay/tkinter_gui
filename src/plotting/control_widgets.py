@@ -1135,7 +1135,9 @@ class HistogramControlWidget(CollapsibleWidget):
         self._scatter_variables = scatter_variables or []
         # Tk variables
         self.gaussian_var = tk.BooleanVar(value=False)
-        self.bin_count_var = tk.IntVar(value=41) 
+        self.unit_gaussian_var = tk.BooleanVar(value=False)
+        self.best_fit_gaussian_var = tk.BooleanVar(value=False)
+        self.bin_count_var = tk.IntVar(value=41)
         self.sigma_extent_var = tk.DoubleVar(value=4.0)  # default ±4σ
         self.scatter_enabled_var = tk.BooleanVar(value=False)
         self.scatter_var_choice = tk.StringVar(value=self._scatter_variables[0] if self._scatter_variables else "")
@@ -1148,20 +1150,15 @@ class HistogramControlWidget(CollapsibleWidget):
     def _create_controls(self):  # type: ignore[override]
         frame = self.content_frame
 
-        # Row 1: Gaussian | Bins (odd) | Extent (±σ)
+        # Row 1: Bins (odd) | Extent (±σ)
         row1 = ttk.Frame(frame)
         row1.pack(fill='x', padx=5, pady=2)
-
-        gauss_chk = ttk.Checkbutton(row1, text="Gaussian Overlay", variable=self.gaussian_var, command=self._notify_change)
-        gauss_chk.pack(side='left')
-
         # vertical separator helper
         def _vsep(parent):
             sep = ttk.Separator(parent, orient='vertical')
             sep.pack(side='left', fill='y', padx=6, pady=2)
             return sep
 
-        _vsep(row1)
         ttk.Label(row1, text="# Bins (odd):").pack(side='left')
         self.bins_spin = ttk.Spinbox(row1, from_=3, to=101, increment=2, textvariable=self.bin_count_var, width=6, command=self._on_bins_changed)
         self.bins_spin.pack(side='left', padx=(4, 2))
@@ -1171,20 +1168,34 @@ class HistogramControlWidget(CollapsibleWidget):
         self.extent_spin = ttk.Spinbox(row1, from_=1.0, to=8.0, increment=0.5, textvariable=self.sigma_extent_var, width=6, command=self._notify_change)
         self.extent_spin.pack(side='left', padx=(4, 2))
 
-        # Row 2: Scatter overlay + variable (only if variables provided)
+        # Row 2: Overlays: Gaussian variants + Scatter (if provided)
+        overlays_row = ttk.Frame(frame)
+        overlays_row.pack(fill='x', padx=5, pady=(4, 2))
+        ttk.Label(overlays_row, text="Overlays:").pack(side='left')
+
+        # Gaussian (scaled to counts) original
+        gauss_chk = ttk.Checkbutton(overlays_row, text="Gaussian", variable=self.gaussian_var, command=self._notify_change)
+        gauss_chk.pack(side='left', padx=(6,0))
+        _vsep(overlays_row)
+        # Unit Gaussian (unscaled PDF)
+        unit_gauss_chk = ttk.Checkbutton(overlays_row, text="Unit Gaussian", variable=self.unit_gaussian_var, command=self._notify_change)
+        unit_gauss_chk.pack(side='left')
+        _vsep(overlays_row)
+        # Best Fit Gaussian (unscaled PDF duplicate semantics per spec)
+        best_gauss_chk = ttk.Checkbutton(overlays_row, text="Best Fit Gaussian", variable=self.best_fit_gaussian_var, command=self._notify_change)
+        best_gauss_chk.pack(side='left')
+
         if self._scatter_variables:
-            scatter_row = ttk.Frame(frame)
-            scatter_row.pack(fill='x', padx=5, pady=(4, 2))
-
-            scatter_chk = ttk.Checkbutton(scatter_row, text="Scatter Overlay", variable=self.scatter_enabled_var, command=self._notify_change)
+            _vsep(overlays_row)
+            scatter_chk = ttk.Checkbutton(overlays_row, text="Scatter", variable=self.scatter_enabled_var, command=self._notify_change)
             scatter_chk.pack(side='left')
-
-            ttk.Label(scatter_row, text="Variable:").pack(side='left', padx=(12, 2))
-            self.scatter_combo = ttk.Combobox(scatter_row, state='readonly', values=self._scatter_variables, textvariable=self.scatter_var_choice, width=16)
+            ttk.Label(overlays_row, text="Variable:").pack(side='left', padx=(8, 2))
+            self.scatter_combo = ttk.Combobox(overlays_row, state='readonly', values=self._scatter_variables, textvariable=self.scatter_var_choice, width=16)
             self.scatter_combo.pack(side='left', padx=4)
             self.scatter_combo.bind('<<ComboboxSelected>>', lambda _e: self._notify_change())
 
         # Traces & event bindings so manual typing triggers updates
+        self.sigma_extent_var.trace_add('write', lambda *_: self._on_extent_commit())
         # Commit events (Return key or leaving focus)
         self.bins_spin.bind('<Return>', lambda e: self._on_bins_commit())
         self.bins_spin.bind('<FocusOut>', lambda e: self._on_bins_commit())
@@ -1233,6 +1244,12 @@ class HistogramControlWidget(CollapsibleWidget):
 
     def gaussian_overlay_enabled(self) -> bool:
         return bool(self.gaussian_var.get())
+
+    def unit_gaussian_enabled(self) -> bool:
+        return bool(self.unit_gaussian_var.get())
+
+    def best_fit_gaussian_enabled(self) -> bool:
+        return bool(self.best_fit_gaussian_var.get())
 
     def scatter_overlay_enabled(self) -> bool:
         return bool(self.scatter_enabled_var.get()) and bool(self._scatter_variables)
