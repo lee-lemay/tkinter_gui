@@ -1153,6 +1153,9 @@ class HistogramControlWidget(CollapsibleWidget):
         self.best_fit_gaussian_var = tk.BooleanVar(value=False)
         self.bin_count_var = tk.IntVar(value=41)
         self.sigma_extent_var = tk.DoubleVar(value=4.0)  # default ±4σ
+        # New: sigma bands enable + y-range mode (sigma | autofit)
+        self.sigma_bands_var = tk.BooleanVar(value=True)
+        self.y_range_mode_var = tk.StringVar(value='sigma')  # 'sigma' or 'autofit'
         self.scatter_enabled_var = tk.BooleanVar(value=False)
         self.scatter_var_choice = tk.StringVar(value=self._scatter_variables[0] if self._scatter_variables else "")
 
@@ -1164,7 +1167,7 @@ class HistogramControlWidget(CollapsibleWidget):
     def _create_controls(self):  # type: ignore[override]
         frame = self.content_frame
 
-        # Row 1: Bins (odd) | Extent (±σ)
+        # Row 1: Sigma bands enable | # Bins | Y Range: (radio: ±σ / AutoFit) | extent spin (active only for sigma)
         row1 = ttk.Frame(frame)
         row1.pack(fill='x', padx=5, pady=2)
         # vertical separator helper
@@ -1173,14 +1176,25 @@ class HistogramControlWidget(CollapsibleWidget):
             sep.pack(side='left', fill='y', padx=6, pady=2)
             return sep
 
+        # Sigma band toggle
+        sigma_bands_chk = ttk.Checkbutton(row1, text="σ Bands", variable=self.sigma_bands_var, command=self._notify_change)
+        sigma_bands_chk.pack(side='left')
+        _vsep(row1)
+
         ttk.Label(row1, text="# Bins (odd):").pack(side='left')
         self.bins_spin = ttk.Spinbox(row1, from_=3, to=101, increment=2, textvariable=self.bin_count_var, width=6, command=self._on_bins_changed)
         self.bins_spin.pack(side='left', padx=(4, 2))
 
         _vsep(row1)
-        ttk.Label(row1, text="Plot Extent (±σ):").pack(side='left')
-        self.extent_spin = ttk.Spinbox(row1, from_=1.0, to=8.0, increment=0.5, textvariable=self.sigma_extent_var, width=6, command=self._notify_change)
-        self.extent_spin.pack(side='left', padx=(4, 2))
+        ttk.Label(row1, text="Y Range:").pack(side='left')
+        sigma_radio = ttk.Radiobutton(row1, text="±σ", value='sigma', variable=self.y_range_mode_var, command=self._on_y_mode_changed)
+        sigma_radio.pack(side='left', padx=(4,0))
+        # Extent spin only active for sigma mode
+        self.extent_spin = ttk.Spinbox(row1, from_=0.5, to=8.0, increment=0.5, textvariable=self.sigma_extent_var, width=6, command=self._notify_change)
+        self.extent_spin.pack(side='left', padx=(8, 2))
+        auto_radio = ttk.Radiobutton(row1, text="AutoFit", value='autofit', variable=self.y_range_mode_var, command=self._on_y_mode_changed)
+        auto_radio.pack(side='left', padx=(4,0))
+        self._update_extent_state()
 
         # Row 2: Overlays: Gaussian variants + Scatter (if provided)
         overlays_row = ttk.Frame(frame)
@@ -1238,6 +1252,19 @@ class HistogramControlWidget(CollapsibleWidget):
     def _on_extent_commit(self):
         self._notify_change()
 
+    def _on_y_mode_changed(self):
+        self._update_extent_state()
+        self._notify_change()
+
+    def _update_extent_state(self):
+        try:
+            if self.y_range_mode_var.get() == 'sigma':
+                self.extent_spin.configure(state='normal')
+            else:
+                self.extent_spin.configure(state='disabled')
+        except Exception:
+            pass
+
     def _on_bins_changed(self):
         self._ensure_odd_bins()
         self._notify_change()
@@ -1255,6 +1282,12 @@ class HistogramControlWidget(CollapsibleWidget):
 
     def get_sigma_extent(self) -> float:
         return float(self.sigma_extent_var.get())
+
+    def y_range_mode(self) -> str:
+        return self.y_range_mode_var.get()
+
+    def sigma_bands_enabled(self) -> bool:
+        return bool(self.sigma_bands_var.get())
 
     def gaussian_overlay_enabled(self) -> bool:
         return bool(self.gaussian_var.get())
@@ -1277,6 +1310,10 @@ class HistogramControlWidget(CollapsibleWidget):
         self._change_callback = cb
 
 __all__ = [
-    # existing exports (implicitly via wildcard import usage) -- ensure new widget accessible
+    'CollapsibleWidget',
+    'DataSelectionWidget',
+    'CoordinateRangeWidget',
+    'TrackSelectionWidget',
+    'PlaybackControlWidget',
     'HistogramControlWidget'
 ]

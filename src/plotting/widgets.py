@@ -101,10 +101,6 @@ class PlotCanvasWidget(ttk.Frame):
         """Refresh the plot display."""
         self.backend.refresh()
     
-    def export_plot(self, filename: str, format: str = 'png'):
-        """Export the current plot to a file."""
-        return self.backend.export_plot(filename, format)
-    
     def set_zoom_callback(self, callback: Callable):
         """Set callback for zoom/pan events."""
         self.backend.set_zoom_callback(callback)

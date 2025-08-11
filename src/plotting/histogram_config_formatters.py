@@ -139,6 +139,8 @@ def _build_error_histogram(app_state, widgets: Sequence[Any], component: str, ti
     best_fit_gaussian_overlay = False
     scatter_var               = None
     scatter_enabled           = False
+    y_mode                    = 'sigma'
+    sigma_bands_enabled       = True
     if hist_ctrl:
         try:
             extent_sigma              = max(1.0, min(8.0, hist_ctrl.get_sigma_extent()))
@@ -148,14 +150,28 @@ def _build_error_histogram(app_state, widgets: Sequence[Any], component: str, ti
             best_fit_gaussian_overlay = hist_ctrl.best_fit_gaussian_enabled()
             scatter_enabled           = hist_ctrl.scatter_overlay_enabled()
             scatter_var               = hist_ctrl.get_scatter_variable()
+            y_mode                    = getattr(hist_ctrl, 'y_range_mode', lambda: 'sigma')()
+            sigma_bands_enabled       = getattr(hist_ctrl, 'sigma_bands_enabled', lambda: True)()
         except Exception:
             pass
     if bins_requested < 1:
         bins_requested = 41
     if bins_requested % 2 == 0:  # ensure odd
         bins_requested += 1
-    left      = mean - extent_sigma*std
-    right     = mean + extent_sigma*std
+    if y_mode == 'sigma':
+        left  = mean - extent_sigma*std
+        right = mean + extent_sigma*std
+    else:
+        # AutoFit: use min/max with 5% padding each side
+        vmin = float(arr.min())
+        vmax = float(arr.max())
+        if vmin == vmax:
+            vmin -= std
+            vmax += std
+        span = vmax - vmin
+        pad = span * 0.05
+        left = vmin - pad
+        right = vmax + pad
     edges_arr = np.linspace(left, right, bins_requested + 1)
     edges     = edges_arr.tolist()
 
@@ -164,7 +180,7 @@ def _build_error_histogram(app_state, widgets: Sequence[Any], component: str, ti
         'edges': edges,
         'mean': mean,
         'std': std,
-        'style': {'outline_only': True, 'sigma_bands': True, 'mean_line': True, 'color': 'black', 'mean_label': 'Mean'},
+        'style': {'outline_only': True, 'sigma_bands': bool(sigma_bands_enabled), 'mean_line': True, 'color': 'black', 'mean_label': 'Mean'},
     }
 
     overlays: List[Dict[str, Any]] = []
